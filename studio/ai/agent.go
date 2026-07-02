@@ -79,6 +79,10 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) (*ChatReply, error) {
 		return &ChatReply{Reply: "Tell me what network you'd like to build.", Source: "offline"}, nil
 	}
 
+	if proto, ok := configureIntent(msg); ok && req.Lab != "" {
+		return a.handleConfigure(ctx, req, proto)
+	}
+
 	if isTopologyRequest(msg) {
 		return a.handleTopology(ctx, req)
 	}
@@ -99,6 +103,66 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) (*ChatReply, error) {
 			"for example: \"3-node OSPF triangle with SR Linux\", \"leaf-spine fabric with 3 leaves and 2 spines using Arista\", " +
 			"or \"4 FRR routers in a ring, each with a Linux host\".",
 		Source: "offline",
+	}, nil
+}
+
+// configureIntent detects a request to assign IPs / configure routing on the
+// currently open lab and returns the protocol ("none", "ospf" or "bgp").
+func configureIntent(msg string) (string, bool) {
+	p := strings.ToLower(msg)
+
+	wantsConfig := strings.Contains(p, "assign ip") ||
+		strings.Contains(p, "ip address") || strings.Contains(p, "addressing") ||
+		strings.Contains(p, "auto-config") || strings.Contains(p, "auto config") ||
+		strings.Contains(p, "configure") || strings.Contains(p, "config the") ||
+		strings.Contains(p, "wire up") || strings.Contains(p, "set up ip")
+
+	if !wantsConfig {
+		return "", false
+	}
+
+	switch {
+	case strings.Contains(p, "ospf"):
+		return "ospf", true
+	case strings.Contains(p, "bgp"):
+		return "bgp", true
+	default:
+		return "none", true
+	}
+}
+
+// handleConfigure applies addressing/config to the currently open lab.
+func (a *Agent) handleConfigure(ctx context.Context, req ChatRequest, proto string) (*ChatReply, error) {
+	if a.cfg.Engine == nil {
+		return &ChatReply{Reply: "No engine is available to configure the lab.", Source: "offline"}, nil
+	}
+
+	g, err := a.cfg.Engine.GetLab(ctx, req.Lab)
+	if err != nil {
+		return &ChatReply{Reply: fmt.Sprintf("Couldn't open lab %q: %v", req.Lab, err), Source: "offline"}, nil
+	}
+
+	plan, err := AutoConfigure(g, proto)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.cfg.Engine.SaveLab(ctx, g); err != nil {
+		return nil, err
+	}
+
+	reply := fmt.Sprintf("Configured lab %q: %s. ", req.Lab, plan.Summary)
+	if proto == "ospf" || proto == "bgp" {
+		reply += "Linux/FRR nodes got " + strings.ToUpper(proto) + " config. "
+	}
+
+	reply += "Re-deploy (or restart nodes) to apply the new startup commands."
+
+	return &ChatReply{
+		Reply:         reply,
+		ProposedGraph: g,
+		Notes:         []string{plan.Summary},
+		Source:        "offline",
 	}, nil
 }
 

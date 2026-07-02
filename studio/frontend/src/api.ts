@@ -163,6 +163,12 @@ export const api = {
       `/api/labs/${encodeURIComponent(name)}/nodes/${encodeURIComponent(node)}/impair`,
       params,
     ),
+  configure: (name: string, protocol: "none" | "ospf" | "bgp") =>
+    req<{ graph: Graph; plan: { summary: string } }>(
+      "POST",
+      `/api/labs/${encodeURIComponent(name)}/configure`,
+      { protocol },
+    ),
 };
 
 export interface ImpairmentParams {

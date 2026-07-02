@@ -11,7 +11,9 @@ import {
   CircleDot,
   ShieldCheck,
   Loader2,
+  Network,
 } from "lucide-react";
+import { useState } from "react";
 import { useStore } from "../store";
 import { api } from "../api";
 
@@ -26,7 +28,9 @@ export default function TopBar() {
   const destroy = useStore((s) => s.destroy);
   const validate = useStore((s) => s.validate);
   const validating = useStore((s) => s.validating);
+  const configureLab = useStore((s) => s.configureLab);
   const refreshStatus = useStore((s) => s.refreshStatus);
+  const [cfgOpen, setCfgOpen] = useState(false);
   const toggleTheme = useStore((s) => s.toggleTheme);
   const toggleCopilot = useStore((s) => s.toggleCopilot);
 
@@ -98,6 +102,38 @@ export default function TopBar() {
           {validating ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
           Validate
         </button>
+        <div className="relative">
+          <button
+            className={`${btn} border border-slate-300 dark:border-slate-700`}
+            disabled={!graph}
+            onClick={() => setCfgOpen((v) => !v)}
+            title="Assign IP addressing / generate config"
+          >
+            <Network size={15} /> Auto-config
+          </button>
+          {cfgOpen && graph && (
+            <div className="absolute right-0 z-20 mt-1 w-52 rounded-md border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-800">
+              {(
+                [
+                  ["none", "Assign IP addressing"],
+                  ["ospf", "Addressing + OSPF (FRR)"],
+                  ["bgp", "Addressing + BGP (FRR)"],
+                ] as const
+              ).map(([proto, label]) => (
+                <button
+                  key={proto}
+                  onClick={() => {
+                    setCfgOpen(false);
+                    configureLab(proto);
+                  }}
+                  className="block w-full rounded px-2 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           className={`${btn} border border-slate-300 dark:border-slate-700`}
           disabled={!graph}

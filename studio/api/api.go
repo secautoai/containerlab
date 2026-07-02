@@ -48,6 +48,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/labs/{name}/nodes/{node}/lifecycle", h.nodeLifecycle)
 	mux.HandleFunc("POST /api/labs/{name}/nodes/{node}/impair", h.impairNode)
 	mux.HandleFunc("POST /api/labs/{name}/validate", h.validateLab)
+	mux.HandleFunc("POST /api/labs/{name}/configure", h.configureLab)
 
 	mux.HandleFunc("POST /api/ai/chat", h.aiChat)
 }

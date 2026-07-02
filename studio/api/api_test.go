@@ -200,6 +200,57 @@ func TestAIChatOffline(t *testing.T) {
 	}
 }
 
+func TestConfigureLab(t *testing.T) {
+	srv, _ := newTestServer(true)
+	defer srv.Close()
+
+	// create + save a 2-linux-node lab
+	body, _ := json.Marshal(createLabRequest{Name: "cfg"})
+	_, _ = http.Post(srv.URL+"/api/labs", "application/json", bytes.NewReader(body))
+
+	g := &model.Graph{
+		Name: "cfg",
+		Nodes: []*model.Node{
+			{Name: "r1", Kind: "linux", Image: "frr"},
+			{Name: "r2", Kind: "linux", Image: "frr"},
+		},
+		Links: []*model.Link{
+			{Source: "r1", SourceEndpoint: "eth1", Target: "r2", TargetEndpoint: "eth1"},
+		},
+	}
+	gb, _ := json.Marshal(g)
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/labs/cfg", bytes.NewReader(gb))
+	req.Header.Set("Content-Type", "application/json")
+	_, _ = http.DefaultClient.Do(req)
+
+	// configure with OSPF
+	cb, _ := json.Marshal(configureRequest{Protocol: "ospf"})
+	resp, err := http.Post(srv.URL+"/api/labs/cfg/configure", "application/json", bytes.NewReader(cb))
+	if err != nil {
+		t.Fatalf("configure: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("configure status: %d", resp.StatusCode)
+	}
+
+	var out configureResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if out.Plan == nil || len(out.Plan.Nodes) != 2 {
+		t.Fatalf("expected addressing plan for 2 nodes, got %+v", out.Plan)
+	}
+
+	// each linux node should now have exec commands persisted
+	for _, n := range out.Graph.Nodes {
+		if len(n.Exec) == 0 {
+			t.Fatalf("node %s missing exec after configure", n.Name)
+		}
+	}
+}
+
 func TestCapabilities(t *testing.T) {
 	srv, _ := newTestServer(false)
 	defer srv.Close()

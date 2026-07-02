@@ -59,6 +59,7 @@ interface StudioState {
   clearValidation: () => void;
   nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
   impairNode: (node: string, params: import("./api").ImpairmentParams) => Promise<void>;
+  configureLab: (protocol: "none" | "ospf" | "bgp") => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
   toggleTheme: () => void;
@@ -345,6 +346,21 @@ export const useStore = create<StudioState>((set, get) => ({
       get().toast("success", `${cleared ? "Cleared" : "Applied"} impairments on ${node}/${params.interface}`);
     } catch (e) {
       get().toast("error", `Impairment failed: ${(e as Error).message}`);
+    }
+  },
+
+  configureLab: async (protocol) => {
+    const g = get().graph;
+    if (!g) return;
+    try {
+      if (get().dirty) await get().saveGraph();
+      const res = await api.configure(g.name, protocol);
+      if (res.graph.nodes == null) res.graph.nodes = [];
+      if (res.graph.links == null) res.graph.links = [];
+      set({ graph: res.graph, dirty: false });
+      get().toast("success", `Auto-config: ${res.plan.summary}`);
+    } catch (e) {
+      get().toast("error", `Auto-config failed: ${(e as Error).message}`);
     }
   },
 

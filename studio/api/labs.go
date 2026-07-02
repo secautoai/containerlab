@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/srl-labs/containerlab/studio/ai"
 	"github.com/srl-labs/containerlab/studio/model"
 )
 
@@ -145,6 +146,49 @@ func (h *Handler) labStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, st)
+}
+
+// configureRequest selects the routing protocol for auto-configuration.
+type configureRequest struct {
+	Protocol string `json:"protocol"`
+}
+
+// configureResponse returns the updated graph and the addressing plan.
+type configureResponse struct {
+	Graph *model.Graph    `json:"graph"`
+	Plan  *ai.AddressPlan `json:"plan"`
+}
+
+// configureLab assigns IP addressing and generates per-node config for a lab,
+// persisting the result. Linux/FRR nodes receive exec-based configuration.
+func (h *Handler) configureLab(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	var req configureRequest
+	_ = decodeJSON(r, &req) // body optional; defaults to addressing only
+
+	if req.Protocol == "" {
+		req.Protocol = "none"
+	}
+
+	g, err := h.Engine.GetLab(r.Context(), name)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	plan, err := ai.AutoConfigure(g, req.Protocol)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := h.Engine.SaveLab(r.Context(), g); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, configureResponse{Graph: g, Plan: plan})
 }
 
 func (h *Handler) deployLab(w http.ResponseWriter, r *http.Request) {
