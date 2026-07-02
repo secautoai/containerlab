@@ -8,10 +8,14 @@ pub mod system;
 pub mod topology;
 pub mod ws;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post, put};
 use axum::Router;
 
 use crate::state::AppState;
+
+/// Uploads (base images, lab archives) may be multi-GB.
+const UPLOAD_LIMIT: usize = 16 * 1024 * 1024 * 1024;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -19,6 +23,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/system", get(system::status))
         .route("/api/templates", get(system::templates))
         .route("/api/images", get(system::images))
+        .route(
+            "/api/images/{template}/{version}/{filename}",
+            put(system::upload_image).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
+        )
+        .route("/api/labs/{lab}/stats", get(system::lab_stats))
         // labs
         .route("/api/labs", get(labs::list).post(labs::create))
         .route(
@@ -94,7 +103,10 @@ pub fn router(state: AppState) -> Router {
         )
         // import / export
         .route("/api/labs/{lab}/export", get(interop::export_lab))
-        .route("/api/import", post(interop::import_lab))
+        .route(
+            "/api/import",
+            post(interop::import_lab).layer(DefaultBodyLimit::max(256 * 1024 * 1024)),
+        )
         // websockets
         .route("/api/ws/events", get(ws::events))
         .route("/api/ws/console/{lab}/{node}", get(ws::console))

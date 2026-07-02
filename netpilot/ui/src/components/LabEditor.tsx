@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import {
   ArrowLeft,
+  BookOpen,
   Download,
   Network as NetworkIcon,
   Play,
@@ -33,6 +34,8 @@ export default function LabEditor() {
   const pushLog = useStore((s) => s.pushLog)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [netMenu, setNetMenu] = useState(false)
+  const [docsOpen, setDocsOpen] = useState(false)
+  const [docsDraft, setDocsDraft] = useState<string | null>(null)
 
   if (!lab) {
     return (
@@ -156,6 +159,20 @@ export default function LabEditor() {
           >
             <SquareDashed size={14} />
           </button>
+          <button
+            onClick={() => {
+              setDocsDraft(lab.body ?? '')
+              setDocsOpen(!docsOpen)
+            }}
+            title="Lab documentation"
+            className={`rounded-md border p-1.5 ${
+              docsOpen
+                ? 'border-accent-600 text-accent-500'
+                : 'border-ink-700 text-ink-300 hover:border-ink-600 hover:text-white'
+            }`}
+          >
+            <BookOpen size={14} />
+          </button>
           <a
             href={api.exportUrl(lab.id)}
             title="Export lab"
@@ -194,6 +211,30 @@ export default function LabEditor() {
           </div>
           {consoleOpen && <ConsolePanel />}
         </main>
+        {docsOpen && (
+          <aside className="flex w-96 shrink-0 flex-col border-l border-ink-800 bg-ink-900">
+            <div className="flex items-center gap-2 border-b border-ink-800 px-3 py-2">
+              <BookOpen size={14} className="text-accent-500" />
+              <h3 className="text-sm font-medium text-white">Lab documentation</h3>
+              <button
+                onClick={async () => {
+                  await api.updateLab(lab.id, { body: docsDraft ?? '' })
+                  await refreshLab()
+                  pushLog('info', 'lab documentation saved')
+                }}
+                className="ml-auto rounded-md bg-accent-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-500"
+              >
+                Save
+              </button>
+            </div>
+            <textarea
+              value={docsDraft ?? lab.body ?? ''}
+              onChange={(e) => setDocsDraft(e.target.value)}
+              placeholder={'# Lab workbook\n\nGoals, addressing plan, tasks…  (Markdown)'}
+              className="min-h-0 flex-1 resize-none bg-ink-950 p-3 font-mono text-xs leading-relaxed text-ink-200 outline-none"
+            />
+          </aside>
+        )}
         {selection && <SidePanel selection={selection} onClose={() => setSelection(null)} />}
         {agentOpen && <AgentPanel />}
       </div>

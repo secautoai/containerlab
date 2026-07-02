@@ -106,15 +106,13 @@ impl NodeSupervisor {
                 Ok(())
             });
         }
-        let child = command
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    QemuError::QemuMissing(binary.clone())
-                } else {
-                    QemuError::Io(e)
-                }
-            });
+        let child = command.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                QemuError::QemuMissing(binary.clone())
+            } else {
+                QemuError::Io(e)
+            }
+        });
 
         let mut child = match child {
             Ok(c) => c,
@@ -235,6 +233,17 @@ impl NodeSupervisor {
             .get(&(lab, node))
             .map(|e| e.spec.console_socket())
             .ok_or(QemuError::NotRunning)
+    }
+
+    /// OS pids of a lab's running nodes (for resource stats).
+    pub async fn pids(&self, lab: Uuid) -> Vec<(Uuid, u32)> {
+        self.inner
+            .lock()
+            .await
+            .iter()
+            .filter(|((l, _), _)| *l == lab)
+            .filter_map(|((_, n), e)| e.child.id().map(|pid| (*n, pid)))
+            .collect()
     }
 
     /// TCP port of a running node's VNC display (5900 + display number).

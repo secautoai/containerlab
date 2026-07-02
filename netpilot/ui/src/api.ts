@@ -80,6 +80,7 @@ export interface Lab {
   description: string
   author: string
   folder: string
+  body?: string
   created_at: string
   modified_at: string
   nodes: Record<string, LabNode>
@@ -177,8 +178,13 @@ export const api = {
   createLab: (body: { name: string; description?: string }) =>
     request<Lab>('POST', '/api/labs', body),
   lab: (id: string) => request<LabView>('GET', `/api/labs/${id}`),
-  updateLab: (id: string, body: Partial<Pick<Lab, 'name' | 'description'>>) =>
+  updateLab: (id: string, body: Partial<Pick<Lab, 'name' | 'description' | 'folder' | 'body'>>) =>
     request<Lab>('PUT', `/api/labs/${id}`, body),
+  labStats: (id: string) =>
+    request<{ node: string; rss_mb: number; cpu_seconds: number }[]>(
+      'GET',
+      `/api/labs/${id}/stats`,
+    ),
   deleteLab: (id: string) => request<unknown>('DELETE', `/api/labs/${id}`),
   cloneLab: (id: string) => request<Lab>('POST', `/api/labs/${id}/clone`),
   startLab: (id: string) => request<unknown>('POST', `/api/labs/${id}/start`),

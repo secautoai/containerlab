@@ -14,11 +14,13 @@ import {
 } from 'lucide-react'
 import { api, type LabSummary, type SystemStatus } from '../api'
 import { useStore } from '../store'
+import ImageManager from './ImageManager'
 
 export default function Dashboard() {
   const [labs, setLabs] = useState<LabSummary[]>([])
   const [system, setSystem] = useState<SystemStatus | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showImages, setShowImages] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const openLab = useStore((s) => s.openLab)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -95,6 +97,12 @@ export default function Dashboard() {
         <div className="mb-6 flex items-center gap-3">
           <h2 className="text-sm font-medium uppercase tracking-wider text-ink-400">Labs</h2>
           <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => setShowImages(true)}
+              className="flex items-center gap-2 rounded-lg border border-ink-700 px-3 py-1.5 text-sm text-ink-300 hover:border-ink-600 hover:text-white"
+            >
+              <HardDrive size={15} /> Images
+            </button>
             <button
               onClick={() => fileRef.current?.click()}
               className="flex items-center gap-2 rounded-lg border border-ink-700 px-3 py-1.5 text-sm text-ink-300 hover:border-ink-600 hover:text-white"
@@ -197,6 +205,7 @@ export default function Dashboard() {
       </main>
 
       {showCreate && <CreateLabModal onClose={() => setShowCreate(false)} onCreated={(id) => void openLab(id)} />}
+      {showImages && <ImageManager onClose={() => setShowImages(false)} />}
     </div>
   )
 }

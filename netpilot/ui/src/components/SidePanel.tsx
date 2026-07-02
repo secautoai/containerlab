@@ -62,6 +62,31 @@ function NodeProps({ lab, nodeId }: { lab: LabView; nodeId: string }) {
   const [form, setForm] = useState({ name: '', cpus: 1, ram_mb: 1024, interfaces: 4, image: '' })
   const [config, setConfig] = useState<string | null>(null)
   const [showConfig, setShowConfig] = useState(false)
+  const [stats, setStats] = useState<{ rss_mb: number; cpu_seconds: number } | null>(null)
+
+  const running0 = (states[nodeId] ?? 'stopped') === 'running'
+  useEffect(() => {
+    if (!running0) {
+      setStats(null)
+      return
+    }
+    let live = true
+    const poll = async () => {
+      try {
+        const all = await api.labStats(lab.id)
+        const mine = all.find((s) => s.node === nodeId)
+        if (live) setStats(mine ? { rss_mb: mine.rss_mb, cpu_seconds: mine.cpu_seconds } : null)
+      } catch {
+        /* stats are best-effort */
+      }
+    }
+    void poll()
+    const t = setInterval(poll, 5000)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [lab.id, nodeId, running0])
 
   useEffect(() => {
     if (node)
@@ -94,6 +119,11 @@ function NodeProps({ lab, nodeId }: { lab: LabView; nodeId: string }) {
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: stateColor[state] }} />
         <span className="font-mono text-sm text-white">{node.name}</span>
         <span className="text-xs text-ink-500">{state}</span>
+        {stats && (
+          <span className="text-[10px] text-ink-500" title="guest RSS · cumulative CPU time">
+            {stats.rss_mb} MB · {stats.cpu_seconds}s cpu
+          </span>
+        )}
         <div className="ml-auto flex gap-1">
           {!running ? (
             <button

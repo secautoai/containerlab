@@ -70,9 +70,9 @@ Legend: [x] done · [~] partial · [ ] planned
 - [x] Startup-config editor (per node)
 - [x] AI chat panel (streaming, tool-call transcript)
 - [x] Image/template manager pages
-- [ ] VNC viewer embed (noVNC)
+- [x] VNC viewer embed (noVNC over WS bridge)
 - [ ] In-browser packet view (decode summary), Wireshark handoff
-- [ ] Lab documentation/workbook tab (Markdown body like EVE)
+- [x] Lab documentation/workbook panel (Markdown body like EVE)
 - [ ] Custom canvas backgrounds/pictures, hotspot maps
 
 ## Phase 6 — AI agent mode (netpilot.io-class)
@@ -98,7 +98,7 @@ Legend: [x] done · [~] partial · [ ] planned
 - [ ] Real-time collaborative editing (CRDT)
 - [ ] Docker container nodes alongside QEMU (containerlab bridge)
 - [ ] VS Code extension speaking the same API
-- [ ] Image upload UI + iShare2-style community image index
+- [x] Image upload UI (streamed, validated) — community index planned
 - [ ] Lab store (community topologies with tasks/grading)
 
 ## Explicit EVE-NG parity map
@@ -115,6 +115,9 @@ Legend: [x] done · [~] partial · [ ] planned
 | Link quality (Pro) | ✅ in-switch, live |
 | Hot connections (Pro) | ✅ (UDP switch rewiring) |
 | Wireshark capture (Pro) | pcap capture/download ✅; live decode planned |
+| Suspend link (Pro) | ✅ in-switch |
+| Config export (expect scripts) | ✅ per-template export_command |
+| Node resource stats | ✅ /proc-based per node |
 | Text objects/shapes/pictures | Text/shapes ✅; pictures planned |
 | Link designer (Pro) | Curved links + labels ✅ |
 | Import/export zip | ✅ |

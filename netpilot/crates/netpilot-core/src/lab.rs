@@ -20,6 +20,9 @@ pub struct Lab {
     pub author: String,
     #[serde(default)]
     pub folder: String,
+    /// Long-form lab documentation / workbook (Markdown).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body: String,
     #[serde(default = "default_version")]
     pub version: u32,
     pub created_at: DateTime<Utc>,
@@ -51,6 +54,7 @@ impl Lab {
             description: String::new(),
             author: String::new(),
             folder: "/".into(),
+            body: String::new(),
             version: 1,
             created_at: now,
             modified_at: now,

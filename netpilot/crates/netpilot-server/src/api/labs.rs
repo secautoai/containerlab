@@ -70,6 +70,7 @@ pub struct UpdateLab {
     pub description: Option<String>,
     pub author: Option<String>,
     pub folder: Option<String>,
+    pub body: Option<String>,
 }
 
 pub async fn update(
@@ -93,6 +94,9 @@ pub async fn update(
             }
             if let Some(f) = req.folder {
                 lab.folder = f;
+            }
+            if let Some(b) = req.body {
+                lab.body = b;
             }
             Ok(lab.clone())
         })
