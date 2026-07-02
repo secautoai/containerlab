@@ -16,7 +16,10 @@ const EXAMPLES = [
   "3-node OSPF triangle with SR Linux",
   "leaf-spine fabric: 3 leaves, 2 spines (Arista)",
   "4 FRR routers in a ring, each with a Linux host",
-  "full mesh of 4 SR Linux nodes",
+  "add a linux host connected to r1",
+  "assign IPs and configure OSPF",
+  "explain this lab",
+  "what's wrong with my lab?",
 ];
 
 export default function CopilotPanel() {

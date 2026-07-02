@@ -104,7 +104,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Impairments   | Per-interface netem: delay, jitter, loss, rate, corruption                 |
 | YAML editor   | View/edit the raw `*.clab.yml` in-app and apply to the canvas               |
 | Auto-config   | Assign IP addressing (/30 links, /32 loopbacks) + OSPF/BGP for FRR/Linux   |
-| Copilot       | Generate topologies + conversationally edit (add/connect/remove) + config  |
+| Copilot       | Generate + edit (add/connect/remove) + configure + explain + troubleshoot  |
 
 ## REST API
 

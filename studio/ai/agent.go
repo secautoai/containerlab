@@ -87,8 +87,21 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) (*ChatReply, error) {
 		return a.handleConfigure(ctx, req, proto)
 	}
 
-	// Conversational edits to the currently open lab (add/connect/remove).
+	// Lab insight and conversational edits operate on the currently open lab.
 	if req.Lab != "" && a.cfg.Engine != nil {
+		if explainIntent(msg) {
+			if g, err := a.cfg.Engine.GetLab(ctx, req.Lab); err == nil {
+				return &ChatReply{Reply: ExplainGraph(g), Source: "offline"}, nil
+			}
+		}
+
+		if troubleshootIntent(msg) {
+			if g, err := a.cfg.Engine.GetLab(ctx, req.Lab); err == nil {
+				summary, notes := TroubleshootGraph(g)
+				return &ChatReply{Reply: summary, Notes: notes, Source: "offline"}, nil
+			}
+		}
+
 		if g, err := a.cfg.Engine.GetLab(ctx, req.Lab); err == nil && IsEditIntent(g, msg) {
 			return a.handleEdit(ctx, req, g)
 		}
