@@ -49,18 +49,17 @@ impl Plumbing {
         self.runner.run_ok("ip", &["link", "del", name]).await
     }
 
-    /// Create a tap device owned by `user` (if given), disable offloads,
-    /// and enslave it to a bridge.
-    pub async fn create_tap(&self, tap: &str, bridge: &str, user: Option<&str>) -> Result<()> {
+    /// Create a tap device (idempotent) owned by `user` (if given) and
+    /// disable offloads so guests don't see partial checksums.
+    pub async fn ensure_tap(&self, tap: &str, user: Option<&str>) -> Result<()> {
         let mut args = vec!["tuntap", "add", "dev", tap, "mode", "tap"];
         if let Some(u) = user {
             args.extend_from_slice(&["user", u]);
         }
-        self.runner.run_ok("ip", &args).await?;
+        let _ = self.runner.run("ip", &args).await?; // tolerate "exists"
         self.runner
             .run_ok("ip", &["link", "set", tap, "up", "mtu", "9500"])
             .await?;
-        // Guests must not see partial checksums.
         let _ = self
             .runner
             .run(
@@ -70,9 +69,21 @@ impl Plumbing {
                 ],
             )
             .await;
+        Ok(())
+    }
+
+    /// Enslave an interface to a bridge.
+    pub async fn enslave(&self, iface: &str, bridge: &str) -> Result<()> {
         self.runner
-            .run_ok("ip", &["link", "set", tap, "master", bridge])
+            .run_ok("ip", &["link", "set", iface, "master", bridge])
             .await
+    }
+
+    /// Create a tap device owned by `user` (if given), disable offloads,
+    /// and enslave it to a bridge.
+    pub async fn create_tap(&self, tap: &str, bridge: &str, user: Option<&str>) -> Result<()> {
+        self.ensure_tap(tap, user).await?;
+        self.enslave(tap, bridge).await
     }
 
     pub async fn delete_tap(&self, tap: &str) -> Result<()> {

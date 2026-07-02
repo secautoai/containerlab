@@ -26,6 +26,7 @@ struct Options {
     listen: SocketAddr,
     ui_dir: Option<PathBuf>,
     port_base: u16,
+    datapath: state::DatapathMode,
 }
 
 fn parse_args() -> Options {
@@ -36,6 +37,7 @@ fn parse_args() -> Options {
         listen: "127.0.0.1:8090".parse().unwrap(),
         ui_dir: None,
         port_base: 45000,
+        datapath: state::DatapathMode::UdpSwitch,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -60,9 +62,17 @@ fn parse_args() -> Options {
                     opts.port_base = v.parse().expect("--port-base must be a port");
                 }
             }
+            "--datapath" => match args.next().as_deref() {
+                Some("udp") => opts.datapath = state::DatapathMode::UdpSwitch,
+                Some("bridge") => opts.datapath = state::DatapathMode::Bridge,
+                other => {
+                    eprintln!("--datapath must be 'udp' or 'bridge' (got {other:?})");
+                    std::process::exit(2);
+                }
+            },
             "--help" | "-h" => {
                 println!(
-                    "netpilot {}\n\nUSAGE:\n  netpilot [--data DIR] [--listen ADDR:PORT] [--ui DIST_DIR] [--port-base PORT]",
+                    "netpilot {}\n\nUSAGE:\n  netpilot [--data DIR] [--listen ADDR:PORT] [--ui DIST_DIR] [--port-base PORT] [--datapath udp|bridge]",
                     env!("CARGO_PKG_VERSION")
                 );
                 std::process::exit(0);
@@ -88,7 +98,9 @@ async fn main() -> anyhow::Result<()> {
     let opts = parse_args();
     tracing::info!("data dir: {}", opts.data_dir.display());
 
-    let state = state::AppState::new(opts.data_dir.clone(), opts.port_base)?;
+    let state =
+        state::AppState::with_datapath(opts.data_dir.clone(), opts.port_base, opts.datapath)?;
+    tracing::info!("datapath: {:?}", opts.datapath);
     tracing::info!(
         "kvm: {} · labs: {}",
         state.kvm(),

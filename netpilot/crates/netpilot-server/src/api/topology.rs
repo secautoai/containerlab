@@ -189,19 +189,22 @@ pub async fn update_link(
             Ok(link.clone())
         })
         .await?;
-    // Live-apply impairment change.
-    let switch = state.switch_for(lab_id).await;
-    let imp = link
-        .impairment
-        .map(|i| netpilot_net::WireImpairment {
-            delay_ms: i.delay_ms,
-            jitter_ms: i.jitter_ms,
-            loss_pct: i.loss_pct,
-            rate_kbit: i.rate_kbit,
-        })
-        .unwrap_or_default();
-    switch.set_impairment(link_id, imp);
-    switch.set_link_suspended(link_id, link.suspended);
+    // Live-apply impairment/suspension in whichever datapath is active.
+    state.hot_wire_link(lab_id, link_id).await?;
+    if state.datapath == crate::state::DatapathMode::UdpSwitch {
+        let switch = state.switch_for(lab_id).await;
+        let imp = link
+            .impairment
+            .map(|i| netpilot_net::WireImpairment {
+                delay_ms: i.delay_ms,
+                jitter_ms: i.jitter_ms,
+                loss_pct: i.loss_pct,
+                rate_kbit: i.rate_kbit,
+            })
+            .unwrap_or_default();
+        switch.set_impairment(link_id, imp);
+        switch.set_link_suspended(link_id, link.suspended);
+    }
     state.events.publish(netpilot_core::Event::LinkUpdated {
         lab: lab_id,
         link: link_id,

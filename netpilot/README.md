@@ -84,9 +84,12 @@ Because wiring is a table, NetPilot gets for free:
 - **packet capture** — per-interface pcap files, downloadable while running
 - **rootless operation** — no bridges, taps, or CAP_NET_ADMIN needed
 
-Privileged extras (tap/bridge datapath, NAT/management/cloud networks via
-`ip`/`nft`) live in `netpilot-net::plumbing` for hosts where NetPilot runs
-with CAP_NET_ADMIN.
+Run with `--datapath bridge` (needs CAP_NET_ADMIN) to switch to kernel
+taps + Linux bridges instead: wire-speed forwarding, NAT/management
+networks (nft masquerade + gateway IP), cloud networks bridged to host
+NICs, and link quality via `tc netem`. Interfaces are torn down cleanly on
+lab stop. The UDP switch remains the default because it needs no
+privileges and supports in-switch capture/suspend.
 
 ## AI agent
 

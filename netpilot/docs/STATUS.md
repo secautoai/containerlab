@@ -60,10 +60,16 @@ exposing 10 tools to external agents.
 9. Streamed 1 MiB image upload; path traversal and bad extensions rejected.
 10. Lab lock: edits 409 while locked, allowed after unlock (integration test).
 
+11. Bridge datapath (`--datapath bridge`): taps + Linux bridge created by
+    the orchestrator, VM↔VM ping over the kernel bridge 3/3 0% loss,
+    clean teardown (0 leftover interfaces). netem verified as commands
+    (sch_netem module absent in this container's kernel).
+12. PDEATHSIG verified: SIGKILL of the server killed all QEMU children.
+
 ## Known gaps (tracked in ROADMAP)
 
-- NAT/management/cloud networks reach the host only in privileged mode
-  (plumbing implemented, not wired into the rootless orchestrator path).
+- Rootless mode cannot provide NAT/cloud host connectivity (use
+  `--datapath bridge` for that).
 - Dual-VM platforms (vMX, vQFX), boot-state caching, config sets.
 - Multi-user auth/RBAC, countdown timers, clustering.
 - Agent responses stream per content block, not per token.

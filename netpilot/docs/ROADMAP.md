@@ -46,6 +46,7 @@ Legend: [x] done · [~] partial · [ ] planned
   - pcap capture per port/link, downloadable (EVE-NG Pro browser Wireshark)
   - multipoint networks = N-port hub in the same switch
 - [x] Privileged mode plumbing: tap + Linux bridge, NAT/management networks (nft masquerade), cloud bridges to host NICs
+- [x] `--datapath bridge`: taps/bridges wired into the orchestrator (verified: VM↔VM ping over a kernel bridge), netem impairment, clean teardown
 - [x] Deterministic interface naming (15-char safe) and MAC derivation
 - [ ] tc mirred cross-connect datapath (LACP/STP transparency)
 - [ ] Cross-host links (UDP tunnels between servers — EVE-NG Pro clustering analog)

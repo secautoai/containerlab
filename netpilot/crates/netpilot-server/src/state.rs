@@ -12,14 +12,27 @@ use netpilot_core::{
     ConsoleKind, CoreError, Endpoint, Event, EventBus, ImageLibrary, Lab, LabStore, Link, Node,
     NodeState, TemplateCatalog,
 };
-use netpilot_net::{PortId, UdpSwitch, WireImpairment};
+use netpilot_net::{
+    link_bridge, network_bridge, node_tap, Plumbing, PortId, SystemRunner, UdpSwitch,
+    WireImpairment,
+};
 use netpilot_qemu::{
-    build_config_media, kvm_available, overlay_path, NodeBootSpec, NodeSupervisor,
+    build_config_media, kvm_available, overlay_path, NicBackend, NodeBootSpec, NodeSupervisor,
 };
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
+
+/// How lab links are realized on this host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatapathMode {
+    /// Rootless userspace UDP switch (default).
+    UdpSwitch,
+    /// Linux taps + bridges; needs CAP_NET_ADMIN. Enables NAT/cloud
+    /// networks and kernel-speed forwarding; impairment via tc netem.
+    Bridge,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -37,10 +50,22 @@ pub struct AppState {
     port_base: u16,
     /// Serialized lab mutations (load-modify-save) to avoid lost updates.
     lab_write_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Datapath implementation.
+    pub datapath: DatapathMode,
+    /// Linux plumbing (bridge mode).
+    plumbing: Arc<Plumbing>,
 }
 
 impl AppState {
     pub fn new(data_dir: PathBuf, port_base: u16) -> anyhow::Result<Self> {
+        Self::with_datapath(data_dir, port_base, DatapathMode::UdpSwitch)
+    }
+
+    pub fn with_datapath(
+        data_dir: PathBuf,
+        port_base: u16,
+        datapath: DatapathMode,
+    ) -> anyhow::Result<Self> {
         let store = LabStore::new(&data_dir)?;
         let images = ImageLibrary::new(store.images_dir());
         let events = EventBus::new();
@@ -57,6 +82,8 @@ impl AppState {
             node_states: Arc::new(RwLock::new(HashMap::new())),
             port_base,
             lab_write_lock: Arc::new(tokio::sync::Mutex::new(())),
+            datapath,
+            plumbing: Arc::new(Plumbing::new(Arc::new(SystemRunner))),
         };
 
         // Track node states off the event bus.
@@ -167,18 +194,32 @@ impl AppState {
             &node_dir,
         )?;
 
-        // Attach every interface to the lab switch.
-        let switch = self.switch_for(lab_id).await;
-        let mut nics = Vec::with_capacity(node.interfaces as usize);
-        for i in 0..node.interfaces {
-            let wiring = switch
-                .attach(PortId {
-                    node: node_id,
-                    iface: i,
-                })
-                .await
-                .map_err(|e| ApiError::internal(e.to_string()))?;
-            nics.push(wiring);
+        // Attach every interface to the datapath.
+        let mut nics: Vec<NicBackend> = Vec::with_capacity(node.interfaces as usize);
+        match self.datapath {
+            DatapathMode::UdpSwitch => {
+                let switch = self.switch_for(lab_id).await;
+                for i in 0..node.interfaces {
+                    let wiring = switch
+                        .attach(PortId {
+                            node: node_id,
+                            iface: i,
+                        })
+                        .await
+                        .map_err(|e| ApiError::internal(e.to_string()))?;
+                    nics.push(wiring.into());
+                }
+            }
+            DatapathMode::Bridge => {
+                for i in 0..node.interfaces {
+                    let tap = node_tap(lab_id, node_id, i);
+                    self.plumbing
+                        .ensure_tap(&tap, None)
+                        .await
+                        .map_err(|e| ApiError::internal(format!("tap {tap}: {e}")))?;
+                    nics.push(NicBackend::Tap { ifname: tap });
+                }
+            }
         }
 
         let spec = NodeBootSpec {
@@ -208,11 +249,108 @@ impl AppState {
         Ok(())
     }
 
-    /// Recompute switch wiring for all links whose endpoints are attached.
+    /// Recompute datapath wiring for all links whose endpoints are attached.
     pub async fn rewire_lab(&self, lab: &Lab) -> ApiResult<()> {
-        let switch = self.switch_for(lab.id).await;
-        for link in lab.links.values() {
-            self.apply_link(&switch, lab, link);
+        match self.datapath {
+            DatapathMode::UdpSwitch => {
+                let switch = self.switch_for(lab.id).await;
+                for link in lab.links.values() {
+                    self.apply_link(&switch, lab, link);
+                }
+            }
+            DatapathMode::Bridge => {
+                for link in lab.links.values() {
+                    if let Err(e) = self.apply_link_bridge(lab, link).await {
+                        self.events
+                            .log(Some(lab.id), "error", format!("bridge wiring: {e}"));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Bridge-mode wiring: a Linux bridge per link/network, endpoint taps
+    /// enslaved to it, netem for impairment on the node-side taps.
+    async fn apply_link_bridge(&self, lab: &Lab, link: &Link) -> ApiResult<()> {
+        let tap_of = |node: &Uuid, iface: &u32| node_tap(lab.id, *node, *iface);
+        let running = |node: &Uuid| {
+            let taps = &self.supervisor;
+            let lab_id = lab.id;
+            let node = *node;
+            async move { taps.is_running(lab_id, node).await }
+        };
+
+        // Pick the bridge and member taps for this link.
+        let (bridge, members): (String, Vec<String>) = match (&link.a, &link.b) {
+            (
+                Endpoint::Node {
+                    node: na,
+                    iface: ia,
+                },
+                Endpoint::Node {
+                    node: nb,
+                    iface: ib,
+                },
+            ) => {
+                if !running(na).await || !running(nb).await {
+                    return Ok(());
+                }
+                (
+                    link_bridge(lab.id, link.id),
+                    vec![tap_of(na, ia), tap_of(nb, ib)],
+                )
+            }
+            (Endpoint::Node { node, iface }, Endpoint::Network { network })
+            | (Endpoint::Network { network }, Endpoint::Node { node, iface }) => {
+                if !running(node).await || !lab.networks.contains_key(network) {
+                    return Ok(());
+                }
+                (network_bridge(lab.id, *network), vec![tap_of(node, iface)])
+            }
+            _ => return Ok(()),
+        };
+
+        let p = &self.plumbing;
+        p.ensure_bridge(&bridge)
+            .await
+            .map_err(|e| ApiError::internal(e.to_string()))?;
+        for tap in &members {
+            p.enslave(tap, &bridge)
+                .await
+                .map_err(|e| ApiError::internal(format!("enslave {tap}: {e}")))?;
+            let imp = link.impairment.unwrap_or_default();
+            let _ = p
+                .set_netem(
+                    tap,
+                    imp.delay_ms,
+                    imp.jitter_ms,
+                    imp.loss_pct,
+                    imp.rate_kbit,
+                )
+                .await;
+        }
+
+        // NAT/management networks get a gateway + masquerade; cloud
+        // networks get bridged to a host interface.
+        let net_id = link.endpoints().iter().find_map(|e| match e {
+            Endpoint::Network { network } => Some(*network),
+            _ => None,
+        });
+        if let Some(net) = net_id.and_then(|id| lab.networks.get(&id)) {
+            match net.kind {
+                netpilot_core::NetworkKind::Nat | netpilot_core::NetworkKind::Management => {
+                    let subnet = net.subnet.clone().unwrap_or_else(|| "10.99.0.0/24".into());
+                    let gw = gateway_of(&subnet);
+                    let _ = p.enable_nat(&bridge, &gw, &subnet).await;
+                }
+                netpilot_core::NetworkKind::Cloud => {
+                    if let Some(host_if) = &net.host_interface {
+                        let _ = p.attach_host_iface(host_if, &bridge).await;
+                    }
+                }
+                netpilot_core::NetworkKind::Bridge => {}
+            }
         }
         Ok(())
     }
@@ -270,27 +408,55 @@ impl AppState {
     pub async fn hot_wire_link(&self, lab_id: Uuid, link_id: Uuid) -> ApiResult<()> {
         let lab = self.store.load(lab_id)?;
         let link = lab.link(link_id)?.clone();
-        let switch = self.switch_for(lab_id).await;
-        self.apply_link(&switch, &lab, &link);
+        match self.datapath {
+            DatapathMode::UdpSwitch => {
+                let switch = self.switch_for(lab_id).await;
+                self.apply_link(&switch, &lab, &link);
+            }
+            DatapathMode::Bridge => self.apply_link_bridge(&lab, &link).await?,
+        }
         Ok(())
     }
 
     pub async fn unwire_link(&self, lab_id: Uuid, link_id: Uuid) {
-        let switch = self.switch_for(lab_id).await;
-        switch.disconnect_link(link_id);
+        match self.datapath {
+            DatapathMode::UdpSwitch => {
+                let switch = self.switch_for(lab_id).await;
+                switch.disconnect_link(link_id);
+            }
+            DatapathMode::Bridge => {
+                // Removing the per-link bridge severs both taps.
+                let _ = self
+                    .plumbing
+                    .delete_bridge(&link_bridge(lab_id, link_id))
+                    .await;
+            }
+        }
     }
 
     pub async fn stop_node(&self, lab_id: Uuid, node_id: Uuid) -> ApiResult<()> {
         self.supervisor.stop(lab_id, node_id).await?;
-        let switch = self.switch_for(lab_id).await;
-        // Detach ports so a later start re-attaches fresh.
+        // Detach datapath ports so a later start re-attaches fresh.
         let lab = self.store.load(lab_id)?;
         if let Ok(node) = lab.node(node_id) {
-            for i in 0..node.interfaces {
-                switch.detach(PortId {
-                    node: node_id,
-                    iface: i,
-                });
+            match self.datapath {
+                DatapathMode::UdpSwitch => {
+                    let switch = self.switch_for(lab_id).await;
+                    for i in 0..node.interfaces {
+                        switch.detach(PortId {
+                            node: node_id,
+                            iface: i,
+                        });
+                    }
+                }
+                DatapathMode::Bridge => {
+                    for i in 0..node.interfaces {
+                        let _ = self
+                            .plumbing
+                            .delete_tap(&node_tap(lab_id, node_id, i))
+                            .await;
+                    }
+                }
             }
         }
         Ok(())
@@ -333,6 +499,31 @@ impl AppState {
     pub async fn stop_lab(&self, lab_id: Uuid) -> ApiResult<()> {
         self.supervisor.stop_lab(lab_id).await?;
         self.switches.write().await.remove(&lab_id);
+        if self.datapath == DatapathMode::Bridge {
+            // Best-effort teardown of this lab's bridges and taps.
+            if let Ok(lab) = self.store.load(lab_id) {
+                for link in lab.links.keys() {
+                    let _ = self
+                        .plumbing
+                        .delete_bridge(&link_bridge(lab_id, *link))
+                        .await;
+                }
+                for net in lab.networks.keys() {
+                    let _ = self
+                        .plumbing
+                        .delete_bridge(&network_bridge(lab_id, *net))
+                        .await;
+                }
+                for node in lab.nodes.values() {
+                    for i in 0..node.interfaces {
+                        let _ = self
+                            .plumbing
+                            .delete_tap(&node_tap(lab_id, node.id, i))
+                            .await;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -341,4 +532,16 @@ impl AppState {
 fn vnc_display_for(node: Uuid) -> u16 {
     let b = node.as_bytes();
     100 + ((b[0] as u16) << 8 | b[1] as u16) % 5000
+}
+
+/// "10.99.0.0/24" → "10.99.0.1/24" (first host = gateway).
+fn gateway_of(subnet: &str) -> String {
+    if let Some((net, mask)) = subnet.split_once('/') {
+        let mut parts: Vec<u8> = net.split('.').filter_map(|p| p.parse().ok()).collect();
+        if parts.len() == 4 {
+            parts[3] = parts[3].saturating_add(1);
+            return format!("{}.{}.{}.{}/{mask}", parts[0], parts[1], parts[2], parts[3]);
+        }
+    }
+    "10.99.0.1/24".into()
 }

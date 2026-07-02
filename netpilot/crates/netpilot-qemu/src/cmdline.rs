@@ -19,6 +19,24 @@ use netpilot_core::{ConsoleKind, DiskBus, QemuSpec};
 use netpilot_net::{node_mac, NicWiring};
 use uuid::Uuid;
 
+/// How one NIC reaches the datapath.
+#[derive(Debug, Clone)]
+pub enum NicBackend {
+    /// Rootless default: UDP socket pair into the userspace switch.
+    Udp { switch_port: u16, qemu_port: u16 },
+    /// Privileged mode: pre-created tap device (enslaved to a bridge).
+    Tap { ifname: String },
+}
+
+impl From<NicWiring> for NicBackend {
+    fn from(w: NicWiring) -> Self {
+        NicBackend::Udp {
+            switch_port: w.switch_port,
+            qemu_port: w.qemu_port,
+        }
+    }
+}
+
 /// Everything needed to boot one node.
 #[derive(Debug, Clone)]
 pub struct NodeBootSpec {
@@ -36,8 +54,8 @@ pub struct NodeBootSpec {
     pub extra_disks: Vec<PathBuf>,
     /// Config media produced by [`crate::media`]: attached per its kind.
     pub config_media: Option<ConfigMedia>,
-    /// Datapath wiring per interface index (from the UDP switch).
-    pub nics: Vec<NicWiring>,
+    /// Datapath wiring per interface index.
+    pub nics: Vec<NicBackend>,
     /// Directory for runtime artifacts (qemu.log). May be a deep path.
     pub run_dir: PathBuf,
     /// Directory for qmp/console unix sockets. MUST be short: sun_path is
@@ -169,10 +187,17 @@ impl NodeBootSpec {
         for (i, wiring) in self.nics.iter().enumerate() {
             let mac = node_mac(self.lab_id, self.node_id, i as u32);
             a.push("-netdev".into());
-            a.push(format!(
-                "socket,id=np{i},udp=127.0.0.1:{},localaddr=127.0.0.1:{}",
-                wiring.switch_port, wiring.qemu_port
-            ));
+            a.push(match wiring {
+                NicBackend::Udp {
+                    switch_port,
+                    qemu_port,
+                } => format!(
+                    "socket,id=np{i},udp=127.0.0.1:{switch_port},localaddr=127.0.0.1:{qemu_port}"
+                ),
+                NicBackend::Tap { ifname } => {
+                    format!("tap,id=np{i},ifname={ifname},script=no,downscript=no")
+                }
+            });
             a.push("-device".into());
             let mut dev = format!("{},netdev=np{i},mac={mac}", self.qemu.nic_model.qemu_name());
             if i >= ROOT_BUS_NICS {
@@ -265,9 +290,11 @@ mod tests {
             extra_disks: vec![],
             config_media: None,
             nics: (0..nics)
-                .map(|i| NicWiring {
-                    switch_port: 46000 + (i as u16) * 2,
-                    qemu_port: 46001 + (i as u16) * 2,
+                .map(|i| {
+                    NicBackend::from(NicWiring {
+                        switch_port: 46000 + (i as u16) * 2,
+                        qemu_port: 46001 + (i as u16) * 2,
+                    })
                 })
                 .collect(),
             run_dir: "/data/labs/x/nodes/y".into(),
@@ -335,6 +362,17 @@ mod tests {
         let joined = s.build_args().join(" ");
         assert!(joined.contains("-vnc 127.0.0.1:7"));
         assert!(!joined.contains("console.sock"));
+    }
+
+    #[test]
+    fn tap_backend() {
+        let mut s = spec(1);
+        s.nics = vec![NicBackend::Tap {
+            ifname: "npt-abc123".into(),
+        }];
+        let joined = s.build_args().join(" ");
+        assert!(joined.contains("tap,id=np0,ifname=npt-abc123,script=no,downscript=no"));
+        assert!(joined.contains("e1000,netdev=np0,mac=52:54:00:"));
     }
 
     #[test]
