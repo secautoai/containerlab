@@ -241,3 +241,67 @@ func (e *FakeEngine) ConsoleTarget(_ context.Context, lab, node string) (*Consol
 		Cmd:       ConsoleCommandForKind(kind),
 	}, nil
 }
+
+// Validate implements Engine (in-memory: all pairs reachable when deployed).
+func (e *FakeEngine) Validate(_ context.Context, lab string) (*ValidationReport, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	g, ok := e.labs[lab]
+	if !ok {
+		return nil, fmt.Errorf("%w: lab %q", ErrNotFound, lab)
+	}
+
+	report := &ValidationReport{Lab: lab, Deployed: e.deployed[lab]}
+	if !report.Deployed {
+		report.summarize()
+		return report, nil
+	}
+
+	for _, a := range g.Nodes {
+		for _, b := range g.Nodes {
+			if a.Name == b.Name {
+				continue
+			}
+
+			report.Checks = append(report.Checks, ReachabilityCheck{
+				From: a.Name, To: b.Name, Target: "fake", OK: true,
+			})
+			report.Passed++
+		}
+	}
+
+	report.summarize()
+
+	return report, nil
+}
+
+// NodeLifecycle implements Engine (in-memory no-op when deployed).
+func (e *FakeEngine) NodeLifecycle(_ context.Context, lab, _, action string) error {
+	if !e.RuntimeUp {
+		return ErrRuntimeUnavailable
+	}
+
+	if !isValidAction(action) {
+		return fmt.Errorf("invalid action %q", action)
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.deployed[lab] {
+		return fmt.Errorf("lab %q is not deployed", lab)
+	}
+
+	return nil
+}
+
+func isValidAction(a string) bool {
+	for _, v := range ValidActions() {
+		if v == a {
+			return true
+		}
+	}
+
+	return false
+}

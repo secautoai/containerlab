@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Terminal, Trash2 } from "lucide-react";
+import { X, Terminal, Trash2, Play, Square, RotateCw } from "lucide-react";
 import { useStore } from "../store";
 import type { GraphNode } from "../api";
 
@@ -12,6 +12,7 @@ export default function NodeDrawer() {
   const removeNode = useStore((s) => s.removeNode);
   const selectNode = useStore((s) => s.selectNode);
   const openConsole = useStore((s) => s.openConsole);
+  const nodeAction = useStore((s) => s.nodeAction);
   const catalog = useStore((s) => s.catalog);
 
   const node = graph?.nodes.find((n) => n.name === selectedNode);
@@ -115,6 +116,31 @@ export default function NodeDrawer() {
       </div>
 
       <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-800">
+        {rt && (
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => nodeAction(node.name, "start")}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-emerald-500 dark:border-slate-700"
+              title="Start node"
+            >
+              <Play size={13} /> Start
+            </button>
+            <button
+              onClick={() => nodeAction(node.name, "stop")}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-amber-500 dark:border-slate-700"
+              title="Stop node"
+            >
+              <Square size={13} /> Stop
+            </button>
+            <button
+              onClick={() => nodeAction(node.name, "restart")}
+              className="flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-brand dark:border-slate-700"
+              title="Restart node"
+            >
+              <RotateCw size={13} /> Restart
+            </button>
+          </div>
+        )}
         <button
           disabled={!running}
           onClick={() => openConsole(node.name)}

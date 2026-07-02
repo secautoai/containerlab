@@ -9,6 +9,8 @@ import {
   RefreshCw,
   Circle,
   CircleDot,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { useStore } from "../store";
 import { api } from "../api";
@@ -22,6 +24,8 @@ export default function TopBar() {
   const saveGraph = useStore((s) => s.saveGraph);
   const deploy = useStore((s) => s.deploy);
   const destroy = useStore((s) => s.destroy);
+  const validate = useStore((s) => s.validate);
+  const validating = useStore((s) => s.validating);
   const refreshStatus = useStore((s) => s.refreshStatus);
   const toggleTheme = useStore((s) => s.toggleTheme);
   const toggleCopilot = useStore((s) => s.toggleCopilot);
@@ -84,6 +88,15 @@ export default function TopBar() {
           onClick={() => destroy()}
         >
           <Trash size={15} /> Destroy
+        </button>
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph || !deployed || validating}
+          onClick={() => validate()}
+          title="Validate end-to-end reachability"
+        >
+          {validating ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+          Validate
         </button>
         <button
           className={`${btn} border border-slate-300 dark:border-slate-700`}

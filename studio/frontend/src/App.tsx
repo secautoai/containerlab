@@ -7,6 +7,7 @@ import Canvas from "./components/Canvas";
 import NodeDrawer from "./components/NodeDrawer";
 import ConsolePanel from "./components/ConsolePanel";
 import CopilotPanel from "./components/CopilotPanel";
+import ValidationModal from "./components/ValidationModal";
 import Toasts from "./components/Toasts";
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
         <CopilotPanel />
       </div>
 
+      <ValidationModal />
       <Toasts />
     </div>
   );

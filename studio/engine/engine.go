@@ -100,7 +100,16 @@ type Engine interface {
 	// ConsoleTarget resolves the container name and default interactive command
 	// for a node so the server can attach a browser console to it.
 	ConsoleTarget(ctx context.Context, lab, node string) (*ConsoleTarget, error)
+
+	// Validate runs an end-to-end reachability check across a deployed lab.
+	Validate(ctx context.Context, lab string) (*ValidationReport, error)
+
+	// NodeLifecycle performs a per-node action: "start", "stop" or "restart".
+	NodeLifecycle(ctx context.Context, lab, node, action string) error
 }
+
+// ValidActions are the accepted NodeLifecycle actions.
+func ValidActions() []string { return []string{"start", "stop", "restart"} }
 
 // ConsoleTarget describes how to open an interactive console into a node.
 type ConsoleTarget struct {

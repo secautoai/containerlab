@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -13,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	dockercontainer "github.com/docker/docker/api/types/container"
+	dockerclient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/google/shlex"
 	clabconstants "github.com/srl-labs/containerlab/constants"
 	clabcore "github.com/srl-labs/containerlab/core"
 	clabruntime "github.com/srl-labs/containerlab/runtime"
@@ -352,28 +357,58 @@ func (e *ClabEngine) Status(ctx context.Context, name string) (*LabStatus, error
 	return st, nil
 }
 
-// Exec runs a command on a single node of a deployed lab.
+// Exec runs a command on a single node of a deployed lab and returns its
+// stdout, stderr and exit code.
 func (e *ClabEngine) Exec(ctx context.Context, lab, node, cmd string) (*ExecResult, error) {
-	clab, err := e.labCLabFromFile(lab)
+	target, err := e.ConsoleTarget(ctx, lab, node)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := clab.CheckConnectivity(ctx); err != nil {
+	parts, err := shlex.Split(cmd)
+	if err != nil || len(parts) == 0 {
+		return nil, fmt.Errorf("invalid command %q", cmd)
+	}
+
+	cli, err := dockerclient.NewClientWithOpts(
+		dockerclient.FromEnv,
+		dockerclient.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+	defer cli.Close()
+
+	execID, err := cli.ContainerExecCreate(ctx, target.Container, dockercontainer.ExecOptions{
+		User:         "0",
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          parts,
+	})
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
 	}
 
-	execCollection, err := clab.Exec(ctx, []string{cmd}, clabcore.WithListNodeName(node))
+	resp, err := cli.ContainerExecAttach(ctx, execID.ID, dockercontainer.ExecStartOptions{})
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Close()
 
-	res := &ExecResult{Node: node, Cmd: cmd}
+	var outBuf, errBuf bytes.Buffer
+	if _, err := stdcopy.StdCopy(&outBuf, &errBuf, resp.Reader); err != nil {
+		return nil, err
+	}
 
-	// Extract the first result from the collection via its JSON dump.
-	dump, derr := execCollection.Dump(clabconstants.FormatJSON)
-	if derr == nil {
-		res.Stdout = dump
+	res := &ExecResult{
+		Node:   node,
+		Cmd:    cmd,
+		Stdout: outBuf.String(),
+		Stderr: errBuf.String(),
+	}
+
+	if inspect, ierr := cli.ContainerExecInspect(ctx, execID.ID); ierr == nil {
+		res.ReturnCode = inspect.ExitCode
 	}
 
 	return res, nil
@@ -422,6 +457,106 @@ func (e *ClabEngine) ConsoleTarget(ctx context.Context, lab, node string) (*Cons
 	}
 
 	return target, nil
+}
+
+// Validate runs a node-to-node ping matrix across a deployed lab and reports
+// reachability using each node's management IPv4 address as the target.
+func (e *ClabEngine) Validate(ctx context.Context, lab string) (*ValidationReport, error) {
+	status, err := e.Status(ctx, lab)
+	if err != nil {
+		return nil, err
+	}
+
+	report := &ValidationReport{Lab: lab, Deployed: status.Deployed}
+	if !status.Deployed {
+		report.summarize()
+		return report, nil
+	}
+
+	// Build a target IP map for reachable nodes.
+	type target struct{ node, ip string }
+
+	targets := make([]target, 0, len(status.Nodes))
+
+	for _, n := range status.Nodes {
+		if n.IPv4Address != "" {
+			targets = append(targets, target{node: n.Name, ip: n.IPv4Address})
+		}
+	}
+
+	for _, from := range status.Nodes {
+		if from.IPv4Address == "" {
+			continue // node has no address / not running
+		}
+
+		for _, to := range targets {
+			if to.node == from.Name {
+				continue
+			}
+
+			res, execErr := e.Exec(ctx, lab, from.Name,
+				fmt.Sprintf("ping -c 2 -W 1 %s", to.ip))
+
+			check := ReachabilityCheck{From: from.Name, To: to.node, Target: to.ip}
+
+			switch {
+			case execErr != nil:
+				check.OK = false
+				check.Detail = execErr.Error()
+			default:
+				check.OK = pingSucceeded(res.Stdout + "\n" + res.Stderr)
+			}
+
+			if check.OK {
+				report.Passed++
+			} else {
+				report.Failed++
+			}
+
+			report.Checks = append(report.Checks, check)
+		}
+	}
+
+	report.summarize()
+
+	return report, nil
+}
+
+// NodeLifecycle starts, stops or restarts a single node's container.
+func (e *ClabEngine) NodeLifecycle(ctx context.Context, lab, node, action string) error {
+	if !isValidAction(action) {
+		return fmt.Errorf("invalid action %q (want start|stop|restart)", action)
+	}
+
+	target, err := e.ConsoleTarget(ctx, lab, node)
+	if err != nil {
+		return err
+	}
+
+	cli, err := dockerclient.NewClientWithOpts(
+		dockerclient.FromEnv,
+		dockerclient.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+	defer cli.Close()
+
+	// Detect an unreachable runtime up-front so the API returns 503 (not 500).
+	if _, perr := cli.Ping(ctx); perr != nil {
+		return fmt.Errorf("%w: %v", ErrRuntimeUnavailable, perr)
+	}
+
+	switch action {
+	case "start":
+		return cli.ContainerStart(ctx, target.Container, dockercontainer.StartOptions{})
+	case "stop":
+		return cli.ContainerStop(ctx, target.Container, dockercontainer.StopOptions{})
+	case "restart":
+		return cli.ContainerRestart(ctx, target.Container, dockercontainer.StopOptions{})
+	}
+
+	return nil
 }
 
 // validateLabName ensures a lab name is safe for filesystem paths.

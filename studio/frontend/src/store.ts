@@ -8,6 +8,7 @@ import {
   type KindInfo,
   type LabStatus,
   type LabSummary,
+  type ValidationReport,
 } from "./api";
 
 export interface Toast {
@@ -33,6 +34,8 @@ interface StudioState {
   toasts: Toast[];
   consoleNode?: string;
   copilotOpen: boolean;
+  validation?: ValidationReport;
+  validating: boolean;
 
   // actions
   init: () => Promise<void>;
@@ -52,6 +55,9 @@ interface StudioState {
   deploy: () => Promise<void>;
   destroy: () => Promise<void>;
   refreshStatus: () => Promise<void>;
+  validate: () => Promise<void>;
+  clearValidation: () => void;
+  nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
   toggleTheme: () => void;
@@ -105,6 +111,7 @@ export const useStore = create<StudioState>((set, get) => ({
   theme: getInitialTheme(),
   toasts: [],
   copilotOpen: false,
+  validating: false,
 
   init: async () => {
     applyTheme(get().theme);
@@ -295,6 +302,35 @@ export const useStore = create<StudioState>((set, get) => ({
       set({ status });
     } catch {
       // ignore; status is best-effort
+    }
+  },
+
+  validate: async () => {
+    const g = get().graph;
+    if (!g) return;
+    set({ validating: true });
+    try {
+      const validation = await api.validate(g.name);
+      set({ validation });
+      get().toast(validation.failed === 0 ? "success" : "error", validation.summary);
+    } catch (e) {
+      get().toast("error", `Validation failed: ${(e as Error).message}`);
+    } finally {
+      set({ validating: false });
+    }
+  },
+
+  clearValidation: () => set({ validation: undefined }),
+
+  nodeAction: async (node, action) => {
+    const g = get().graph;
+    if (!g) return;
+    try {
+      await api.nodeLifecycle(g.name, node, action);
+      get().toast("success", `${action} ${node}`);
+      await get().refreshStatus();
+    } catch (e) {
+      get().toast("error", `${action} failed: ${(e as Error).message}`);
     }
   },
 

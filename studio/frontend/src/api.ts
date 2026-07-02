@@ -89,6 +89,23 @@ export interface ChatReply {
   source: string;
 }
 
+export interface ReachabilityCheck {
+  from: string;
+  to: string;
+  target: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface ValidationReport {
+  lab: string;
+  deployed: boolean;
+  checks: ReachabilityCheck[];
+  passed: number;
+  failed: number;
+  summary: string;
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -132,4 +149,12 @@ export const api = {
   yamlURL: (name: string) => `/api/labs/${encodeURIComponent(name)}/yaml`,
   aiChat: (message: string, lab?: string) =>
     req<ChatReply>("POST", "/api/ai/chat", { message, lab }),
+  validate: (name: string) =>
+    req<ValidationReport>("POST", `/api/labs/${encodeURIComponent(name)}/validate`),
+  nodeLifecycle: (name: string, node: string, action: "start" | "stop" | "restart") =>
+    req<unknown>(
+      "POST",
+      `/api/labs/${encodeURIComponent(name)}/nodes/${encodeURIComponent(node)}/lifecycle`,
+      { action },
+    ),
 };
