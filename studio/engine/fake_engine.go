@@ -296,6 +296,30 @@ func (e *FakeEngine) NodeLifecycle(_ context.Context, lab, _, action string) err
 	return nil
 }
 
+// SetImpairment implements Engine (in-memory: validate + require deployed).
+func (e *FakeEngine) SetImpairment(_ context.Context, lab, _, iface string, params ImpairmentParams) error {
+	if err := params.Validate(); err != nil {
+		return err
+	}
+
+	if iface == "" {
+		return fmt.Errorf("interface is required")
+	}
+
+	if !e.RuntimeUp {
+		return ErrRuntimeUnavailable
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.deployed[lab] {
+		return fmt.Errorf("lab %q is not deployed", lab)
+	}
+
+	return nil
+}
+
 func isValidAction(a string) bool {
 	for _, v := range ValidActions() {
 		if v == a {

@@ -59,6 +59,56 @@ func TestFakeValidate(t *testing.T) {
 	}
 }
 
+func TestImpairmentParamsValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		p       ImpairmentParams
+		wantErr bool
+	}{
+		{"ok", ImpairmentParams{DelayMs: 50, JitterMs: 5, LossPct: 1}, false},
+		{"loss too high", ImpairmentParams{LossPct: 150}, true},
+		{"corruption too high", ImpairmentParams{CorruptionPct: 101}, true},
+		{"jitter without delay", ImpairmentParams{JitterMs: 5}, true},
+		{"zero clears", ImpairmentParams{}, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.p.Validate()
+			if (err != nil) != c.wantErr {
+				t.Errorf("Validate() err=%v, wantErr=%v", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestFakeSetImpairment(t *testing.T) {
+	ctx := context.Background()
+	e := NewFakeEngine(true)
+	_ = e.SaveLab(ctx, sampleGraph("lab1"))
+
+	// not deployed
+	if err := e.SetImpairment(ctx, "lab1", "n1", "eth1", ImpairmentParams{DelayMs: 10}); err == nil {
+		t.Fatal("expected error: not deployed")
+	}
+
+	_, _ = e.Deploy(ctx, "lab1")
+
+	if err := e.SetImpairment(ctx, "lab1", "n1", "eth1", ImpairmentParams{DelayMs: 10}); err != nil {
+		t.Fatalf("set impairment: %v", err)
+	}
+
+	// invalid params rejected regardless of deploy state
+	if err := e.SetImpairment(ctx, "lab1", "n1", "eth1", ImpairmentParams{LossPct: 200}); err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	// missing interface rejected
+	if err := e.SetImpairment(ctx, "lab1", "n1", "", ImpairmentParams{}); err == nil {
+		t.Fatal("expected interface-required error")
+	}
+}
+
 func TestFakeNodeLifecycle(t *testing.T) {
 	ctx := context.Background()
 	e := NewFakeEngine(true)

@@ -99,6 +99,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Console       | Browser terminal (xterm.js) into any running node                          |
 | Validation    | End-to-end reachability (ping matrix) with a pass/fail report             |
 | Node ops      | Per-node start / stop / restart                                            |
+| Impairments   | Per-interface netem: delay, jitter, loss, rate, corruption                 |
 | Copilot       | Plain-English → topology proposal → apply to canvas → deploy              |
 
 ## REST API
@@ -119,5 +120,6 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | `POST /api/labs/{name}/validate`                | Reachability report            |
 | `POST /api/labs/{name}/nodes/{node}/exec`       | Run a command on a node        |
 | `POST /api/labs/{name}/nodes/{node}/lifecycle`  | start / stop / restart a node  |
+| `POST /api/labs/{name}/nodes/{node}/impair`     | set/clear netem impairments    |
 | `GET  /api/labs/{name}/nodes/{node}/console`    | WebSocket console (TTY)        |
 | `POST /api/ai/chat`                             | Copilot chat turn              |

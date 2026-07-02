@@ -58,6 +58,7 @@ interface StudioState {
   validate: () => Promise<void>;
   clearValidation: () => void;
   nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
+  impairNode: (node: string, params: import("./api").ImpairmentParams) => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
   toggleTheme: () => void;
@@ -331,6 +332,19 @@ export const useStore = create<StudioState>((set, get) => ({
       await get().refreshStatus();
     } catch (e) {
       get().toast("error", `${action} failed: ${(e as Error).message}`);
+    }
+  },
+
+  impairNode: async (node, params) => {
+    const g = get().graph;
+    if (!g) return;
+    try {
+      await api.impair(g.name, node, params);
+      const cleared =
+        !params.delayMs && !params.jitterMs && !params.lossPct && !params.rateKbit && !params.corruptionPct;
+      get().toast("success", `${cleared ? "Cleared" : "Applied"} impairments on ${node}/${params.interface}`);
+    } catch (e) {
+      get().toast("error", `Impairment failed: ${(e as Error).message}`);
     }
   },
 

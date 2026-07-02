@@ -78,6 +78,40 @@ func (h *Handler) nodeLifecycle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": req.Action})
 }
 
+// impairRequest is the body for setting netem link impairments on an interface.
+type impairRequest struct {
+	Interface               string `json:"interface"`
+	engine.ImpairmentParams        // inline delay/jitter/loss/rate/corruption
+}
+
+func (h *Handler) impairNode(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req impairRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Interface == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "interface is required"})
+		return
+	}
+
+	if err := req.ImpairmentParams.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := h.Engine.SetImpairment(r.Context(), lab, node, req.Interface, req.ImpairmentParams); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "impairment applied"})
+}
+
 func (h *Handler) validateLab(w http.ResponseWriter, r *http.Request) {
 	lab := r.PathValue("name")
 

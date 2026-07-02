@@ -157,4 +157,19 @@ export const api = {
       `/api/labs/${encodeURIComponent(name)}/nodes/${encodeURIComponent(node)}/lifecycle`,
       { action },
     ),
+  impair: (name: string, node: string, params: ImpairmentParams) =>
+    req<unknown>(
+      "POST",
+      `/api/labs/${encodeURIComponent(name)}/nodes/${encodeURIComponent(node)}/impair`,
+      params,
+    ),
 };
+
+export interface ImpairmentParams {
+  interface: string;
+  delayMs?: number;
+  jitterMs?: number;
+  lossPct?: number;
+  rateKbit?: number;
+  corruptionPct?: number;
+}

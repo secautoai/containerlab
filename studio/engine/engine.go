@@ -12,6 +12,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/srl-labs/containerlab/studio/model"
 )
@@ -106,6 +107,41 @@ type Engine interface {
 
 	// NodeLifecycle performs a per-node action: "start", "stop" or "restart".
 	NodeLifecycle(ctx context.Context, lab, node, action string) error
+
+	// SetImpairment applies (or clears) netem link impairments on a node's
+	// interface. Passing an all-zero params clears the impairments.
+	SetImpairment(ctx context.Context, lab, node, iface string, params ImpairmentParams) error
+}
+
+// ImpairmentParams describes netem link impairments for an interface.
+type ImpairmentParams struct {
+	// DelayMs is the added one-way latency in milliseconds.
+	DelayMs uint `json:"delayMs"`
+	// JitterMs is the latency variation in milliseconds (requires DelayMs > 0).
+	JitterMs uint `json:"jitterMs"`
+	// LossPct is the packet loss percentage (0-100).
+	LossPct float64 `json:"lossPct"`
+	// RateKbit rate-limits the interface in kbit/s (0 = unlimited).
+	RateKbit uint64 `json:"rateKbit"`
+	// CorruptionPct is the packet corruption percentage (0-100).
+	CorruptionPct float64 `json:"corruptionPct"`
+}
+
+// Validate checks that the impairment parameters are within valid ranges.
+func (p ImpairmentParams) Validate() error {
+	if p.LossPct < 0 || p.LossPct > 100 {
+		return fmt.Errorf("packet loss must be between 0 and 100")
+	}
+
+	if p.CorruptionPct < 0 || p.CorruptionPct > 100 {
+		return fmt.Errorf("corruption must be between 0 and 100")
+	}
+
+	if p.JitterMs != 0 && p.DelayMs == 0 {
+		return fmt.Errorf("jitter cannot be set without a delay")
+	}
+
+	return nil
 }
 
 // ValidActions are the accepted NodeLifecycle actions.
