@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Loader2,
   Network,
+  Archive,
 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "../store";
@@ -29,6 +30,7 @@ export default function TopBar() {
   const validate = useStore((s) => s.validate);
   const validating = useStore((s) => s.validating);
   const configureLab = useStore((s) => s.configureLab);
+  const saveConfigs = useStore((s) => s.saveConfigs);
   const refreshStatus = useStore((s) => s.refreshStatus);
   const [cfgOpen, setCfgOpen] = useState(false);
   const toggleTheme = useStore((s) => s.toggleTheme);
@@ -92,6 +94,14 @@ export default function TopBar() {
           onClick={() => destroy()}
         >
           <Trash size={15} /> Destroy
+        </button>
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph || !deployed}
+          onClick={() => saveConfigs()}
+          title="Save running configs to disk"
+        >
+          <Archive size={15} /> Save cfg
         </button>
         <button
           className={`${btn} border border-slate-300 dark:border-slate-700`}

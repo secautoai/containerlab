@@ -69,6 +69,64 @@ func (h *Handler) createLab(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, g)
 }
 
+// importRequest carries a containerlab topology YAML to import as a new lab.
+type importRequest struct {
+	Name string `json:"name,omitempty"`
+	YAML string `json:"yaml"`
+}
+
+// importLab parses a pasted/uploaded containerlab topology into a lab, applying
+// auto-layout so it renders sensibly on the canvas.
+func (h *Handler) importLab(w http.ResponseWriter, r *http.Request) {
+	var req importRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.YAML == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "yaml is required"})
+		return
+	}
+
+	g, err := model.ClabYAMLToGraph([]byte(req.YAML))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Name != "" {
+		g.Name = req.Name
+	}
+
+	if g.Name == "" {
+		writeJSON(w, http.StatusBadRequest,
+			errorResponse{Error: "topology has no name; provide one"})
+
+		return
+	}
+
+	model.AutoLayout(g)
+
+	if err := h.Engine.SaveLab(r.Context(), g); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, g)
+}
+
+func (h *Handler) saveConfigs(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	if err := h.Engine.SaveConfigs(r.Context(), name); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "configs saved"})
+}
+
 func (h *Handler) getLab(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

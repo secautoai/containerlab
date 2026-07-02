@@ -111,6 +111,10 @@ type Engine interface {
 	// SetImpairment applies (or clears) netem link impairments on a node's
 	// interface. Passing an all-zero params clears the impairments.
 	SetImpairment(ctx context.Context, lab, node, iface string, params ImpairmentParams) error
+
+	// SaveConfigs persists the running configuration of a deployed lab's nodes
+	// (equivalent to `containerlab save`).
+	SaveConfigs(ctx context.Context, lab string) error
 }
 
 // ImpairmentParams describes netem link impairments for an interface.

@@ -320,6 +320,22 @@ func (e *FakeEngine) SetImpairment(_ context.Context, lab, _, iface string, para
 	return nil
 }
 
+// SaveConfigs implements Engine (in-memory: require deployed).
+func (e *FakeEngine) SaveConfigs(_ context.Context, lab string) error {
+	if !e.RuntimeUp {
+		return ErrRuntimeUnavailable
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.deployed[lab] {
+		return fmt.Errorf("lab %q is not deployed", lab)
+	}
+
+	return nil
+}
+
 func isValidAction(a string) bool {
 	for _, v := range ValidActions() {
 		if v == a {

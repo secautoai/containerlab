@@ -559,6 +559,20 @@ func (e *ClabEngine) NodeLifecycle(ctx context.Context, lab, node, action string
 	return nil
 }
 
+// SaveConfigs persists the running configuration of a deployed lab's nodes.
+func (e *ClabEngine) SaveConfigs(ctx context.Context, lab string) error {
+	clab, err := e.labCLabFromFile(lab)
+	if err != nil {
+		return err
+	}
+
+	if err := clab.CheckConnectivity(ctx); err != nil {
+		return fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+
+	return clab.Save(ctx)
+}
+
 // validateLabName ensures a lab name is safe for filesystem paths.
 func validateLabName(name string) error {
 	if name == "" {

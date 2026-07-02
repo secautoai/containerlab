@@ -200,6 +200,65 @@ func TestAIChatOffline(t *testing.T) {
 	}
 }
 
+func TestImportLab(t *testing.T) {
+	srv, _ := newTestServer(true)
+	defer srv.Close()
+
+	yaml := `name: imported
+topology:
+  nodes:
+    a: {kind: linux, image: alpine}
+    b: {kind: linux, image: alpine}
+    c: {kind: linux, image: alpine}
+  links:
+    - endpoints: ["a:eth1", "b:eth1"]
+    - endpoints: ["b:eth2", "c:eth1"]
+`
+	body, _ := json.Marshal(importRequest{YAML: yaml})
+
+	resp, err := http.Post(srv.URL+"/api/labs/import", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("import status: %d", resp.StatusCode)
+	}
+
+	var g model.Graph
+	if err := json.NewDecoder(resp.Body).Decode(&g); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if g.Name != "imported" || len(g.Nodes) != 3 || len(g.Links) != 2 {
+		t.Fatalf("unexpected imported graph: %+v", g)
+	}
+
+	// auto-layout should give every node a non-zero position
+	for _, n := range g.Nodes {
+		if n.Position.X == 0 && n.Position.Y == 0 {
+			t.Errorf("node %s missing auto-layout position", n.Name)
+		}
+	}
+}
+
+func TestSaveConfigsRuntimeDown(t *testing.T) {
+	srv, _ := newTestServer(false)
+	defer srv.Close()
+
+	body, _ := json.Marshal(createLabRequest{Name: "s1"})
+	_, _ = http.Post(srv.URL+"/api/labs", "application/json", bytes.NewReader(body))
+
+	resp, err := http.Post(srv.URL+"/api/labs/s1/save", "application/json", nil)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+}
+
 func TestConfigureLab(t *testing.T) {
 	srv, _ := newTestServer(true)
 	defer srv.Close()

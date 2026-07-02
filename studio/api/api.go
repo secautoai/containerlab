@@ -36,6 +36,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/labs", h.listLabs)
 	mux.HandleFunc("POST /api/labs", h.createLab)
+	mux.HandleFunc("POST /api/labs/import", h.importLab)
 	mux.HandleFunc("GET /api/labs/{name}", h.getLab)
 	mux.HandleFunc("PUT /api/labs/{name}", h.saveLab)
 	mux.HandleFunc("DELETE /api/labs/{name}", h.deleteLab)
@@ -43,6 +44,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/labs/{name}/status", h.labStatus)
 	mux.HandleFunc("POST /api/labs/{name}/deploy", h.deployLab)
 	mux.HandleFunc("POST /api/labs/{name}/destroy", h.destroyLab)
+	mux.HandleFunc("POST /api/labs/{name}/save", h.saveConfigs)
 
 	mux.HandleFunc("POST /api/labs/{name}/nodes/{node}/exec", h.execNode)
 	mux.HandleFunc("POST /api/labs/{name}/nodes/{node}/lifecycle", h.nodeLifecycle)

@@ -169,6 +169,9 @@ export const api = {
       `/api/labs/${encodeURIComponent(name)}/configure`,
       { protocol },
     ),
+  importLab: (yaml: string, name?: string) => req<Graph>("POST", "/api/labs/import", { yaml, name }),
+  saveConfigs: (name: string) =>
+    req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/save`),
 };
 
 export interface ImpairmentParams {

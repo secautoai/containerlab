@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Plus, Trash2, FolderOpen, CircleDot, Circle } from "lucide-react";
+import { Plus, Trash2, FolderOpen, CircleDot, Circle, Upload } from "lucide-react";
 import { useStore } from "../store";
+import ImportModal from "./ImportModal";
 
 export default function Sidebar() {
   const labs = useStore((s) => s.labs);
@@ -9,6 +10,7 @@ export default function Sidebar() {
   const createLab = useStore((s) => s.createLab);
   const deleteLab = useStore((s) => s.deleteLab);
   const [newName, setNewName] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   const create = async () => {
     const name = newName.trim();
@@ -36,7 +38,15 @@ export default function Sidebar() {
             <Plus size={16} />
           </button>
         </div>
+        <button
+          onClick={() => setImportOpen(true)}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-brand dark:border-slate-700"
+        >
+          <Upload size={14} /> Import topology
+        </button>
       </div>
+
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
 
       <div className="flex-1 overflow-y-auto p-2">
         <div className="px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
