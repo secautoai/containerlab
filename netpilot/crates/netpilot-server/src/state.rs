@@ -57,6 +57,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Rootless default constructor (used by integration tests; the binary
+    /// goes through [`Self::with_datapath`]).
+    #[allow(dead_code)]
     pub fn new(data_dir: PathBuf, port_base: u16) -> anyhow::Result<Self> {
         Self::with_datapath(data_dir, port_base, DatapathMode::UdpSwitch)
     }
