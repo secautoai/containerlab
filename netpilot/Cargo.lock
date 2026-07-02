@@ -994,6 +994,7 @@ dependencies = [
  "netpilot-net",
  "netpilot-qemu",
  "quick-xml",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

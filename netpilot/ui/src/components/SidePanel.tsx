@@ -12,6 +12,7 @@ import {
 import { useStore } from '../store'
 import type { Selection } from './Canvas'
 import { stateColor } from './icons'
+import PacketViewer from './PacketViewer'
 
 export default function SidePanel({
   selection,
@@ -293,6 +294,7 @@ function Interfaces({ lab, nodeId, running }: { lab: LabView; nodeId: string; ru
   const templates = useStore((s) => s.templates)
   const pushLog = useStore((s) => s.pushLog)
   const [capturing, setCapturing] = useState<Record<number, boolean>>({})
+  const [viewer, setViewer] = useState<number | null>(null)
   if (!node) return null
   const pattern = templates.find((t) => t.id === node.template)?.iface_pattern ?? 'eth{i}'
 
@@ -354,6 +356,13 @@ function Interfaces({ lab, nodeId, running }: { lab: LabView; nodeId: string; ru
                   >
                     {capturing[i] ? '⏺ rec' : 'pcap'}
                   </button>
+                  <button
+                    title="View decoded packets"
+                    onClick={() => setViewer(i)}
+                    className="rounded bg-ink-700 px-1 text-[10px] text-ink-300 hover:bg-ink-600"
+                  >
+                    view
+                  </button>
                   <a
                     title="Download pcap"
                     href={api.captureUrl(lab.id, nodeId, i)}
@@ -367,6 +376,15 @@ function Interfaces({ lab, nodeId, running }: { lab: LabView; nodeId: string; ru
           )
         })}
       </div>
+      {viewer !== null && (
+        <PacketViewer
+          labId={lab.id}
+          nodeId={nodeId}
+          iface={viewer}
+          ifaceName={ifaceName(pattern, viewer)}
+          onClose={() => setViewer(null)}
+        />
+      )}
     </div>
   )
 }

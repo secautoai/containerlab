@@ -31,6 +31,7 @@ futures.workspace = true
 zip.workspace = true
 quick-xml.workspace = true
 async-trait.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 http-body-util = "0.1.3"

@@ -305,6 +305,37 @@ pub async fn set_config(
     Ok(Json(serde_json::json!({ "saved": node_id })))
 }
 
+#[derive(Deserialize)]
+pub struct ExecRequest {
+    pub command: String,
+    #[serde(default = "default_exec_timeout")]
+    pub timeout_s: u32,
+}
+
+fn default_exec_timeout() -> u32 {
+    15
+}
+
+/// Run a CLI command on a running node's serial console and return the
+/// captured output (the REST twin of the agent's run_command tool).
+pub async fn exec(
+    State(state): State<AppState>,
+    Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<ExecRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    if req.command.trim().is_empty() {
+        return Err(ApiError::bad_request("command must not be empty"));
+    }
+    let sock = state
+        .supervisor
+        .console_socket(lab_id, node_id)
+        .await
+        .map_err(|_| ApiError::conflict("node is not running"))?;
+    let output =
+        crate::agent::run_console_command(&sock, &req.command, req.timeout_s.min(120)).await?;
+    Ok(Json(serde_json::json!({ "output": output })))
+}
+
 /// Export the running configuration off a live node's serial console into
 /// its startup config (EVE-NG "export config"). Uses the template's
 /// `export_command`.

@@ -71,7 +71,7 @@ Legend: [x] done · [~] partial · [ ] planned
 - [x] AI chat panel (streaming, tool-call transcript)
 - [x] Image/template manager pages
 - [x] VNC viewer embed (noVNC over WS bridge)
-- [ ] In-browser packet view (decode summary), Wireshark handoff
+- [x] In-browser packet view (live decode summary table) + pcap download for Wireshark
 - [x] Lab documentation/workbook panel (Markdown body like EVE)
 - [ ] Custom canvas backgrounds/pictures, hotspot maps
 
@@ -84,7 +84,7 @@ Legend: [x] done · [~] partial · [ ] planned
 - [x] Streaming responses over WebSocket
 - [ ] Post-deploy validation suites (assert adjacencies/reachability)
 - [ ] Fault injection scenarios + AI grading (teaching mode)
-- [ ] MCP server exposing lab control to external agents
+- [x] MCP server (netpilot-mcp, stdio JSON-RPC) exposing lab control to external agents
 
 ## Phase 7 — Interop & import/export
 - [x] Lab export/import as zip (topology + configs)

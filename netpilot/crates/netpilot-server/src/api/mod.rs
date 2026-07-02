@@ -59,6 +59,7 @@ pub fn router(state: AppState) -> Router {
             "/api/labs/{lab}/nodes/{node}/config/export",
             post(nodes::export_config),
         )
+        .route("/api/labs/{lab}/nodes/{node}/exec", post(nodes::exec))
         .route(
             "/api/labs/{lab}/nodes/{node}/interfaces",
             get(nodes::interfaces),
@@ -100,6 +101,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/labs/{lab}/nodes/{node}/interfaces/{iface}/capture.pcap",
             get(capture::download),
+        )
+        .route(
+            "/api/labs/{lab}/nodes/{node}/interfaces/{iface}/capture/summary",
+            get(capture::summary),
         )
         // import / export
         .route("/api/labs/{lab}/export", get(interop::export_lab))

@@ -100,6 +100,18 @@ the chat as an expandable, auditable transcript.
 “Build a 3-router OSPF triangle with VyOS and verify adjacencies come up.”
 ```
 
+## MCP server
+
+`netpilot-mcp` exposes lab control to any MCP-capable agent (Claude Code,
+Claude Desktop, …) over stdio — list/create labs, add nodes and links,
+start/stop, set configs, and run CLI commands on node consoles:
+
+```json
+{ "mcpServers": { "netpilot": {
+    "command": "netpilot-mcp",
+    "env": { "NETPILOT_URL": "http://127.0.0.1:8090" } } } }
+```
+
 ## Import / export
 
 - Export: lab zip (topology + configs) — `GET /api/labs/:id/export`
@@ -112,7 +124,7 @@ the chat as an expandable, auditable transcript.
 ## Development
 
 ```bash
-cargo test --workspace        # 36 unit/integration tests
+cargo test --workspace        # 45+ unit/integration tests
 cd ui && npm run build        # typecheck + bundle
 ```
 
