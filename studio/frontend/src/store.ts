@@ -48,6 +48,7 @@ interface StudioState {
   deleteLab: (name: string) => Promise<void>;
   saveGraph: () => Promise<void>;
   applyProposedGraph: (g: Graph, deploy?: boolean) => Promise<void>;
+  adoptGraph: (g: Graph) => void;
   setGraph: (updater: (g: Graph) => Graph) => void;
   addNode: (kind: KindInfo, position: { x: number; y: number }) => void;
   updateNode: (name: string, patch: Partial<GraphNode>) => void;
@@ -206,6 +207,14 @@ export const useStore = create<StudioState>((set, get) => ({
     await get().saveGraph();
     get().toast("success", `Applied topology "${graph.name}"`);
     if (deploy) await get().deploy();
+  },
+
+  adoptGraph: (g) => {
+    // Adopt a server-side already-saved graph (e.g. a Copilot edit) into the
+    // canvas without marking it dirty.
+    const graph: Graph = { ...g, nodes: g.nodes ?? [], links: g.links ?? [] };
+    set({ graph, dirty: false, selectedNode: undefined });
+    get().refreshLabs();
   },
 
   setGraph: (updater) => {

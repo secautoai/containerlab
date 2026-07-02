@@ -86,6 +86,7 @@ export interface ChatReply {
   reply: string;
   proposedGraph?: Graph;
   notes?: string[];
+  applied?: boolean;
   source: string;
 }
 

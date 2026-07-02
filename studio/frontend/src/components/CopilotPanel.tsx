@@ -8,6 +8,7 @@ interface ChatMsg {
   text: string;
   notes?: string[];
   proposed?: Graph;
+  applied?: boolean;
   source?: string;
 }
 
@@ -24,6 +25,7 @@ export default function CopilotPanel() {
   const caps = useStore((s) => s.capabilities);
   const graph = useStore((s) => s.graph);
   const applyProposedGraph = useStore((s) => s.applyProposedGraph);
+  const adoptGraph = useStore((s) => s.adoptGraph);
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -44,6 +46,10 @@ export default function CopilotPanel() {
     setBusy(true);
     try {
       const reply = await api.aiChat(message, graph?.name);
+      // Already-applied edits/config: adopt directly into the canvas.
+      if (reply.applied && reply.proposedGraph) {
+        adoptGraph(reply.proposedGraph);
+      }
       setMessages((m) => [
         ...m,
         {
@@ -51,6 +57,7 @@ export default function CopilotPanel() {
           text: reply.reply,
           notes: reply.notes,
           proposed: reply.proposedGraph,
+          applied: reply.applied,
           source: reply.source,
         },
       ]);
@@ -112,7 +119,13 @@ export default function CopilotPanel() {
                   ))}
                 </ul>
               )}
-              {m.proposed && (
+              {m.proposed && m.applied && (
+                <div className="mt-2 text-xs text-emerald-500">
+                  ✓ applied to canvas ({m.proposed.nodes?.length ?? 0} nodes,{" "}
+                  {m.proposed.links?.length ?? 0} links)
+                </div>
+              )}
+              {m.proposed && !m.applied && (
                 <div className="mt-2 rounded-md border border-slate-300 bg-white p-2 text-xs dark:border-slate-600 dark:bg-slate-900">
                   <div className="mb-1 font-medium">
                     {m.proposed.name} · {m.proposed.nodes?.length ?? 0} nodes ·{" "}

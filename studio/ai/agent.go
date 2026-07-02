@@ -66,6 +66,10 @@ type ChatReply struct {
 	ProposedGraph *model.Graph `json:"proposedGraph,omitempty"`
 	// Notes are additional bullet points about the proposal.
 	Notes []string `json:"notes,omitempty"`
+	// Applied is true when ProposedGraph has already been saved to the open lab
+	// (conversational edits and auto-config), so the UI should adopt it directly
+	// rather than offering an Apply button.
+	Applied bool `json:"applied,omitempty"`
 	// Source indicates how the reply was produced: "llm" or "offline".
 	Source string `json:"source"`
 }
@@ -81,6 +85,13 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) (*ChatReply, error) {
 
 	if proto, ok := configureIntent(msg); ok && req.Lab != "" {
 		return a.handleConfigure(ctx, req, proto)
+	}
+
+	// Conversational edits to the currently open lab (add/connect/remove).
+	if req.Lab != "" && a.cfg.Engine != nil {
+		if g, err := a.cfg.Engine.GetLab(ctx, req.Lab); err == nil && IsEditIntent(g, msg) {
+			return a.handleEdit(ctx, req, g)
+		}
 	}
 
 	if isTopologyRequest(msg) {
@@ -162,6 +173,26 @@ func (a *Agent) handleConfigure(ctx context.Context, req ChatRequest, proto stri
 		Reply:         reply,
 		ProposedGraph: g,
 		Notes:         []string{plan.Summary},
+		Applied:       true,
+		Source:        "offline",
+	}, nil
+}
+
+// handleEdit applies a conversational edit to the currently open lab.
+func (a *Agent) handleEdit(ctx context.Context, req ChatRequest, g *model.Graph) (*ChatReply, error) {
+	res := EditGraph(g, req.Message)
+	if !res.Changed {
+		return &ChatReply{Reply: res.Message, Source: "offline"}, nil
+	}
+
+	if err := a.cfg.Engine.SaveLab(ctx, g); err != nil {
+		return nil, err
+	}
+
+	return &ChatReply{
+		Reply:         res.Message,
+		ProposedGraph: g,
+		Applied:       true,
 		Source:        "offline",
 	}, nil
 }
