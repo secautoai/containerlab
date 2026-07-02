@@ -98,6 +98,7 @@ pub fn router(state: AppState) -> Router {
         // websockets
         .route("/api/ws/events", get(ws::events))
         .route("/api/ws/console/{lab}/{node}", get(ws::console))
+        .route("/api/ws/vnc/{lab}/{node}", get(ws::vnc))
         .route("/api/ws/agent/{lab}", get(ws::agent))
         .with_state(state)
 }

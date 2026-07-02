@@ -124,6 +124,68 @@ async fn bridge_console(
     Ok(())
 }
 
+/// VNC bridge: binary WebSocket frames ⇄ the node's local VNC TCP port.
+/// noVNC's RFB client connects straight to this endpoint.
+pub async fn vnc(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+) -> Response {
+    ws.on_upgrade(move |socket| async move {
+        let (mut ws_tx, mut ws_rx) = socket.split();
+        let port = match state.supervisor.vnc_port(lab_id, node_id).await {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = ws_tx
+                    .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 1011,
+                        reason: format!("vnc unavailable: {e}").into(),
+                    })))
+                    .await;
+                return;
+            }
+        };
+        let stream = match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::debug!("vnc connect failed: {e}");
+                return;
+            }
+        };
+        let (mut tcp_rx, mut tcp_tx) = stream.into_split();
+
+        let down = tokio::spawn(async move {
+            let mut buf = [0u8; 16384];
+            loop {
+                match tcp_rx.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if ws_tx
+                            .send(Message::Binary(buf[..n].to_vec().into()))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            match msg {
+                Message::Binary(b) => {
+                    if tcp_tx.write_all(&b).await.is_err() {
+                        break;
+                    }
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+        down.abort();
+    })
+}
+
 /// AI agent chat socket. Protocol: client sends user messages as JSON
 /// `{"message": "..."}`; server streams agent output events as JSON.
 pub async fn agent(

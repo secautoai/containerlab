@@ -7,6 +7,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { wsUrl } from '../api'
 import { useStore } from '../store'
+import VncViewer from './VncViewer'
 
 function XTerm({ labId, nodeId }: { labId: string; nodeId: string }) {
   const holder = useRef<HTMLDivElement>(null)
@@ -140,7 +141,11 @@ export default function ConsolePanel() {
         ) : (
           consoles.map((c) => (
             <div key={c.nodeId} className="h-full" style={{ display: active === c.nodeId ? 'block' : 'none' }}>
-              <XTerm labId={lab.id} nodeId={c.nodeId} />
+              {lab.nodes[c.nodeId]?.console === 'vnc' ? (
+                <VncViewer labId={lab.id} nodeId={c.nodeId} />
+              ) : (
+                <XTerm labId={lab.id} nodeId={c.nodeId} />
+              )}
             </div>
           ))
         )}

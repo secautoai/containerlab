@@ -90,12 +90,23 @@ impl NodeSupervisor {
         tracing::info!(node = %spec.name, "starting: {}", crate::render_cmdline(&binary, &args));
 
         let log = std::fs::File::create(spec.run_dir.join("qemu.log"))?;
-        let child = tokio::process::Command::new(&binary)
+        let mut command = tokio::process::Command::new(&binary);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
             .stderr(Stdio::from(log))
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+        #[cfg(target_os = "linux")]
+        unsafe {
+            // If the server dies (crash, SIGKILL), take the guests down too —
+            // orphaned QEMU would keep overlay write locks and switch ports.
+            command.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
+        let child = command
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -224,6 +235,18 @@ impl NodeSupervisor {
             .get(&(lab, node))
             .map(|e| e.spec.console_socket())
             .ok_or(QemuError::NotRunning)
+    }
+
+    /// TCP port of a running node's VNC display (5900 + display number).
+    pub async fn vnc_port(&self, lab: Uuid, node: Uuid) -> Result<u16> {
+        let running = self.inner.lock().await;
+        running
+            .get(&(lab, node))
+            .ok_or(QemuError::NotRunning)?
+            .spec
+            .vnc_display
+            .map(|d| 5900 + d)
+            .ok_or_else(|| QemuError::Other("node has no VNC console".into()))
     }
 
     /// Set guest-visible carrier state for an interface of a running node.

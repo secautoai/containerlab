@@ -966,6 +966,7 @@ dependencies = [
  "anyhow",
  "fatfs",
  "fscommon",
+ "libc",
  "netpilot-core",
  "netpilot-net",
  "rand",

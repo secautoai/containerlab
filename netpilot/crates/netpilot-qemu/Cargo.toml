@@ -17,6 +17,7 @@ rand.workspace = true
 fatfs = "0.3"
 fscommon = "0.1.1"
 netpilot-net = { version = "0.1.0", path = "../netpilot-net" }
+libc = "0.2.186"
 
 [dev-dependencies]
 tempfile = "3"
