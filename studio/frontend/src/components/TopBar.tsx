@@ -15,8 +15,10 @@ import {
   Archive,
   ClipboardCheck,
   Code2,
+  Undo2,
+  Redo2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../store";
 import { api } from "../api";
 
@@ -39,6 +41,30 @@ export default function TopBar() {
   const toggleTheme = useStore((s) => s.toggleTheme);
   const toggleCopilot = useStore((s) => s.toggleCopilot);
   const toggleYamlEditor = useStore((s) => s.toggleYamlEditor);
+  const undo = useStore((s) => s.undo);
+  const redo = useStore((s) => s.redo);
+  const canUndo = useStore((s) => s.past.length > 0);
+  const canRedo = useStore((s) => s.future.length > 0);
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z or Ctrl+Y (redo).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      // don't hijack typing in inputs/textareas
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const deployed = !!status?.deployed;
 
@@ -69,6 +95,23 @@ export default function TopBar() {
       )}
 
       <div className="ml-auto flex items-center gap-1.5">
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph || !canUndo}
+          onClick={() => undo()}
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 size={15} />
+        </button>
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph || !canRedo}
+          onClick={() => redo()}
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <Redo2 size={15} />
+        </button>
+        <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
         <button
           className={`${btn} border border-slate-300 dark:border-slate-700`}
           disabled={!graph}

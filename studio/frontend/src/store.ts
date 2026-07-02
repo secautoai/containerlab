@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { recordPast, applyUndo, applyRedo } from "./history";
 import {
   api,
   type Capabilities,
@@ -29,6 +30,8 @@ interface StudioState {
   status?: LabStatus;
   dirty: boolean;
   selectedNode?: string;
+  past: Graph[];
+  future: Graph[];
 
   // ui
   theme: "dark" | "light";
@@ -56,6 +59,8 @@ interface StudioState {
   addLink: (link: GraphLink) => void;
   removeLink: (index: number) => void;
   selectNode: (name?: string) => void;
+  undo: () => void;
+  redo: () => void;
   deploy: () => Promise<void>;
   destroy: () => Promise<void>;
   refreshStatus: () => Promise<void>;
@@ -123,6 +128,8 @@ export const useStore = create<StudioState>((set, get) => ({
   catalog: [],
   labs: [],
   dirty: false,
+  past: [],
+  future: [],
   theme: getInitialTheme(),
   toasts: [],
   copilotOpen: false,
@@ -155,7 +162,7 @@ export const useStore = create<StudioState>((set, get) => ({
       const graph = await api.getLab(name);
       if (!graph.nodes) graph.nodes = [];
       if (!graph.links) graph.links = [];
-      set({ graph, dirty: false, selectedNode: undefined, status: undefined });
+      set({ graph, dirty: false, selectedNode: undefined, status: undefined, past: [], future: [] });
       await get().refreshStatus();
     } catch (e) {
       get().toast("error", `Failed to open lab: ${(e as Error).message}`);
@@ -167,7 +174,7 @@ export const useStore = create<StudioState>((set, get) => ({
       const graph = await api.createLab(name);
       if (!graph.nodes) graph.nodes = [];
       if (!graph.links) graph.links = [];
-      set({ graph, dirty: false });
+      set({ graph, dirty: false, past: [], future: [] });
       await get().refreshLabs();
       get().toast("success", `Created lab "${name}"`);
     } catch (e) {
@@ -203,7 +210,7 @@ export const useStore = create<StudioState>((set, get) => ({
   applyProposedGraph: async (g, deploy) => {
     // Ensure required arrays exist, then persist the AI-proposed topology.
     const graph: Graph = { ...g, nodes: g.nodes ?? [], links: g.links ?? [] };
-    set({ graph, dirty: true, selectedNode: undefined, status: undefined });
+    set({ graph, dirty: true, selectedNode: undefined, status: undefined, past: [], future: [] });
     await get().saveGraph();
     get().toast("success", `Applied topology "${graph.name}"`);
     if (deploy) await get().deploy();
@@ -213,14 +220,36 @@ export const useStore = create<StudioState>((set, get) => ({
     // Adopt a server-side already-saved graph (e.g. a Copilot edit) into the
     // canvas without marking it dirty.
     const graph: Graph = { ...g, nodes: g.nodes ?? [], links: g.links ?? [] };
-    set({ graph, dirty: false, selectedNode: undefined });
+    set({ graph, dirty: false, selectedNode: undefined, past: [], future: [] });
     get().refreshLabs();
   },
 
   setGraph: (updater) => {
     const g = get().graph;
     if (!g) return;
-    set({ graph: updater(structuredClone(g)), dirty: true });
+    // Snapshot the current graph for undo, then apply the edit.
+    set({
+      past: recordPast(get().past, structuredClone(g)),
+      future: [],
+      graph: updater(structuredClone(g)),
+      dirty: true,
+    });
+  },
+
+  undo: () => {
+    const g = get().graph;
+    if (!g) return;
+    const t = applyUndo(get().past, g, get().future);
+    if (!t) return;
+    set({ past: t.past, graph: t.present, future: t.future, dirty: true, selectedNode: undefined });
+  },
+
+  redo: () => {
+    const g = get().graph;
+    if (!g) return;
+    const t = applyRedo(get().past, g, get().future);
+    if (!t) return;
+    set({ past: t.past, graph: t.present, future: t.future, dirty: true, selectedNode: undefined });
   },
 
   addNode: (kind, position) => {
@@ -401,7 +430,7 @@ export const useStore = create<StudioState>((set, get) => ({
       const res = await api.configure(g.name, protocol);
       if (res.graph.nodes == null) res.graph.nodes = [];
       if (res.graph.links == null) res.graph.links = [];
-      set({ graph: res.graph, dirty: false });
+      set({ graph: res.graph, dirty: false, past: [], future: [] });
       get().toast("success", `Auto-config: ${res.plan.summary}`);
     } catch (e) {
       get().toast("error", `Auto-config failed: ${(e as Error).message}`);
@@ -413,7 +442,7 @@ export const useStore = create<StudioState>((set, get) => ({
       const g = await api.importLab(yaml, name);
       if (g.nodes == null) g.nodes = [];
       if (g.links == null) g.links = [];
-      set({ graph: g, dirty: false, selectedNode: undefined, status: undefined });
+      set({ graph: g, dirty: false, selectedNode: undefined, status: undefined, past: [], future: [] });
       await get().refreshLabs();
       get().toast("success", `Imported lab "${g.name}"`);
     } catch (e) {
@@ -437,7 +466,7 @@ export const useStore = create<StudioState>((set, get) => ({
       const g = await api.labFromTemplate(templateId, name);
       if (g.nodes == null) g.nodes = [];
       if (g.links == null) g.links = [];
-      set({ graph: g, dirty: false, selectedNode: undefined, status: undefined });
+      set({ graph: g, dirty: false, selectedNode: undefined, status: undefined, past: [], future: [] });
       await get().refreshLabs();
       get().toast("success", `Created "${g.name}" from template`);
     } catch (e) {
@@ -478,7 +507,7 @@ export const useStore = create<StudioState>((set, get) => ({
     const updated = await api.updateYaml(g.name, yaml);
     if (updated.nodes == null) updated.nodes = [];
     if (updated.links == null) updated.links = [];
-    set({ graph: updated, dirty: false, selectedNode: undefined });
+    set({ graph: updated, dirty: false, selectedNode: undefined, past: [], future: [] });
     get().toast("success", "Applied YAML");
   },
 

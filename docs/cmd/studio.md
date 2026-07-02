@@ -93,7 +93,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 
 | Area          | What you can do                                                            |
 | ------------- | ------------------------------------------------------------------------- |
-| Canvas        | Add/remove nodes, draw/remove links, drag layout, edit node properties    |
+| Canvas        | Add/remove nodes, draw/remove links, drag layout, node props, undo/redo    |
 | Labs          | Create, templates, import, open, save, clone, rename, delete, export        |
 | Lifecycle     | Deploy, destroy, save running configs                                       |
 | Status        | Live per-node state and management IPs                                     |
