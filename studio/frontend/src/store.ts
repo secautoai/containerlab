@@ -41,6 +41,7 @@ interface StudioState {
   createLab: (name: string) => Promise<void>;
   deleteLab: (name: string) => Promise<void>;
   saveGraph: () => Promise<void>;
+  applyProposedGraph: (g: Graph, deploy?: boolean) => Promise<void>;
   setGraph: (updater: (g: Graph) => Graph) => void;
   addNode: (kind: KindInfo, position: { x: number; y: number }) => void;
   updateNode: (name: string, patch: Partial<GraphNode>) => void;
@@ -173,6 +174,15 @@ export const useStore = create<StudioState>((set, get) => ({
     } catch (e) {
       get().toast("error", `Failed to save: ${(e as Error).message}`);
     }
+  },
+
+  applyProposedGraph: async (g, deploy) => {
+    // Ensure required arrays exist, then persist the AI-proposed topology.
+    const graph: Graph = { ...g, nodes: g.nodes ?? [], links: g.links ?? [] };
+    set({ graph, dirty: true, selectedNode: undefined, status: undefined });
+    await get().saveGraph();
+    get().toast("success", `Applied topology "${graph.name}"`);
+    if (deploy) await get().deploy();
   },
 
   setGraph: (updater) => {

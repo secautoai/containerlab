@@ -46,9 +46,8 @@ func Run(ctx context.Context, cfg Config) error {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	// WebSocket + AI endpoints.
+	// WebSocket console endpoint (REST + AI chat are on the api handler).
 	registerConsole(mux, cfg.Engine)
-	registerAI(mux, agent)
 
 	spa, err := spaHandler()
 	if err != nil {

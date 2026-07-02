@@ -11,13 +11,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/srl-labs/containerlab/studio/ai"
 	"github.com/srl-labs/containerlab/studio/engine"
 	"github.com/srl-labs/containerlab/studio/model"
 )
 
 func newTestServer(runtimeUp bool) (*httptest.Server, *engine.FakeEngine) {
 	eng := engine.NewFakeEngine(runtimeUp)
-	h := New(eng, nil)
+	agent := ai.NewAgent(ai.Config{Engine: eng}) // offline agent (no API key)
+	h := New(eng, agent)
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
@@ -166,6 +168,35 @@ func TestDeployRuntimeUnavailable(t *testing.T) {
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+}
+
+func TestAIChatOffline(t *testing.T) {
+	srv, _ := newTestServer(false)
+	defer srv.Close()
+
+	body, _ := json.Marshal(map[string]string{"message": "build a 3 node linear srlinux lab"})
+
+	resp, err := http.Post(srv.URL+"/api/ai/chat", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("ai chat: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("ai chat status: %d", resp.StatusCode)
+	}
+
+	var reply ai.ChatReply
+	if err := json.NewDecoder(resp.Body).Decode(&reply); err != nil {
+		t.Fatalf("decode reply: %v", err)
+	}
+
+	if reply.ProposedGraph == nil || len(reply.ProposedGraph.Nodes) != 3 {
+		t.Fatalf("expected proposed graph with 3 nodes, got %+v", reply.ProposedGraph)
+	}
+
+	if reply.Source != "offline" {
+		t.Errorf("expected offline source, got %q", reply.Source)
 	}
 }
 

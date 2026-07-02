@@ -11,27 +11,20 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/srl-labs/containerlab/studio/ai"
 	"github.com/srl-labs/containerlab/studio/engine"
 )
 
 // Handler holds the dependencies shared by all API handlers.
 type Handler struct {
 	Engine engine.Engine
-	// AI is the optional Copilot agent. It may be nil when AI is not configured.
-	AI Copilot
-}
-
-// Copilot is the minimal interface the API needs from the AI agent. It is kept
-// here (rather than importing the ai package) to avoid an import cycle and to
-// allow the agent to be nil/stubbed.
-type Copilot interface {
-	// Available reports whether a real LLM backend is configured.
-	Available() bool
+	// AI is the Copilot agent. It may be nil when AI is not wired up.
+	AI *ai.Agent
 }
 
 // New creates an API handler.
-func New(eng engine.Engine, ai Copilot) *Handler {
-	return &Handler{Engine: eng, AI: ai}
+func New(eng engine.Engine, agent *ai.Agent) *Handler {
+	return &Handler{Engine: eng, AI: agent}
 }
 
 // RegisterRoutes mounts all REST routes on the provided mux (Go 1.22 pattern
@@ -52,6 +45,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/labs/{name}/destroy", h.destroyLab)
 
 	mux.HandleFunc("POST /api/labs/{name}/nodes/{node}/exec", h.execNode)
+
+	mux.HandleFunc("POST /api/ai/chat", h.aiChat)
 }
 
 // writeJSON encodes v as JSON with the given status code.
@@ -81,6 +76,29 @@ func writeError(w http.ResponseWriter, err error) {
 	}
 
 	writeJSON(w, status, errorResponse{Error: err.Error()})
+}
+
+// aiChat handles a Copilot chat turn, returning a natural-language reply and an
+// optional proposed topology graph.
+func (h *Handler) aiChat(w http.ResponseWriter, r *http.Request) {
+	if h.AI == nil {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "copilot is not available"})
+		return
+	}
+
+	var req ai.ChatRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	reply, err := h.AI.Chat(r.Context(), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, reply)
 }
 
 // decodeJSON reads and decodes a JSON request body into v.

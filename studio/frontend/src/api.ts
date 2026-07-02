@@ -82,6 +82,13 @@ export interface Capabilities {
   aiAvailable: boolean;
 }
 
+export interface ChatReply {
+  reply: string;
+  proposedGraph?: Graph;
+  notes?: string[];
+  source: string;
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -123,4 +130,6 @@ export const api = {
       { cmd },
     ),
   yamlURL: (name: string) => `/api/labs/${encodeURIComponent(name)}/yaml`,
+  aiChat: (message: string, lab?: string) =>
+    req<ChatReply>("POST", "/api/ai/chat", { message, lab }),
 };
