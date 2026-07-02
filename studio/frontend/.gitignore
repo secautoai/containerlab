@@ -1,0 +1,8 @@
+node_modules/
+*.local
+.vite/
+
+# The built SPA in dist/ is embedded into the Go binary via embed.go, so it must
+# be committed even though the repo-root .gitignore ignores "dist" directories.
+!dist/
+!dist/**
