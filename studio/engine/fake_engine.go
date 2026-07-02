@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +14,17 @@ import (
 
 	"github.com/srl-labs/containerlab/studio/model"
 )
+
+// cloneGraph returns a deep copy of a graph via a JSON round-trip.
+func cloneGraph(g *model.Graph) *model.Graph {
+	b, _ := json.Marshal(g)
+
+	var c model.Graph
+
+	_ = json.Unmarshal(b, &c)
+
+	return &c
+}
 
 // FakeEngine is an in-memory Engine implementation used for tests and for
 // running ClabStudio without a container runtime (design-only mode). It never
@@ -316,6 +328,60 @@ func (e *FakeEngine) SetImpairment(_ context.Context, lab, _, iface string, para
 	if !e.deployed[lab] {
 		return fmt.Errorf("lab %q is not deployed", lab)
 	}
+
+	return nil
+}
+
+// CloneLab implements Engine.
+func (e *FakeEngine) CloneLab(_ context.Context, src, dst string) error {
+	if err := validateLabName(dst); err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	g, ok := e.labs[src]
+	if !ok {
+		return fmt.Errorf("%w: lab %q", ErrNotFound, src)
+	}
+
+	if _, exists := e.labs[dst]; exists {
+		return fmt.Errorf("lab %q already exists", dst)
+	}
+
+	clone := cloneGraph(g)
+	clone.Name = dst
+	e.labs[dst] = clone
+
+	return nil
+}
+
+// RenameLab implements Engine.
+func (e *FakeEngine) RenameLab(_ context.Context, oldName, newName string) error {
+	if err := validateLabName(newName); err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	g, ok := e.labs[oldName]
+	if !ok {
+		return fmt.Errorf("%w: lab %q", ErrNotFound, oldName)
+	}
+
+	if _, exists := e.labs[newName]; exists {
+		return fmt.Errorf("lab %q already exists", newName)
+	}
+
+	if e.deployed[oldName] {
+		return fmt.Errorf("lab %q is deployed; destroy it before renaming", oldName)
+	}
+
+	g.Name = newName
+	e.labs[newName] = g
+	delete(e.labs, oldName)
 
 	return nil
 }

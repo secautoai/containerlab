@@ -115,6 +115,12 @@ type Engine interface {
 	// SaveConfigs persists the running configuration of a deployed lab's nodes
 	// (equivalent to `containerlab save`).
 	SaveConfigs(ctx context.Context, lab string) error
+
+	// CloneLab copies a lab's topology to a new lab name (dst must not exist).
+	CloneLab(ctx context.Context, src, dst string) error
+
+	// RenameLab renames a lab (new must not exist; lab must not be deployed).
+	RenameLab(ctx context.Context, oldName, newName string) error
 }
 
 // ImpairmentParams describes netem link impairments for an interface.

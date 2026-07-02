@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, FolderOpen, CircleDot, Circle, Upload, LayoutTemplate } from "lucide-react";
+import { Plus, Trash2, FolderOpen, CircleDot, Circle, Upload, LayoutTemplate, Copy, Pencil } from "lucide-react";
 import { useStore } from "../store";
 import ImportModal from "./ImportModal";
 import TemplateModal from "./TemplateModal";
@@ -10,6 +10,8 @@ export default function Sidebar() {
   const openLab = useStore((s) => s.openLab);
   const createLab = useStore((s) => s.createLab);
   const deleteLab = useStore((s) => s.deleteLab);
+  const cloneLab = useStore((s) => s.cloneLab);
+  const renameLab = useStore((s) => s.renameLab);
   const [newName, setNewName] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -92,6 +94,26 @@ export default function Sidebar() {
                   className="ml-1 hidden text-slate-400 hover:text-brand group-hover:block"
                 >
                   <FolderOpen size={14} />
+                </button>
+                <button
+                  title="Clone lab"
+                  onClick={() => {
+                    const n = prompt(`Clone "${lab.name}" as:`, `${lab.name}-copy`);
+                    if (n && n.trim()) cloneLab(lab.name, n.trim());
+                  }}
+                  className="ml-1 hidden text-slate-400 hover:text-brand group-hover:block"
+                >
+                  <Copy size={14} />
+                </button>
+                <button
+                  title="Rename lab"
+                  onClick={() => {
+                    const n = prompt(`Rename "${lab.name}" to:`, lab.name);
+                    if (n && n.trim() && n.trim() !== lab.name) renameLab(lab.name, n.trim());
+                  }}
+                  className="ml-1 hidden text-slate-400 hover:text-brand group-hover:block"
+                >
+                  <Pencil size={14} />
                 </button>
                 <button
                   title="Delete lab"

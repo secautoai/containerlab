@@ -259,6 +259,51 @@ func TestSaveConfigsRuntimeDown(t *testing.T) {
 	}
 }
 
+func TestCloneAndRenameLab(t *testing.T) {
+	srv, _ := newTestServer(true)
+	defer srv.Close()
+
+	body, _ := json.Marshal(createLabRequest{Name: "orig"})
+	_, _ = http.Post(srv.URL+"/api/labs", "application/json", bytes.NewReader(body))
+
+	// clone
+	cb, _ := json.Marshal(nameRequest{Name: "copy"})
+	resp, err := http.Post(srv.URL+"/api/labs/orig/clone", "application/json", bytes.NewReader(cb))
+	if err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("clone status: %d", resp.StatusCode)
+	}
+
+	// rename
+	rb, _ := json.Marshal(nameRequest{Name: "renamed"})
+	resp, err = http.Post(srv.URL+"/api/labs/copy/rename", "application/json", bytes.NewReader(rb))
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("rename status: %d", resp.StatusCode)
+	}
+
+	// verify: orig + renamed exist, copy gone
+	resp, _ = http.Get(srv.URL + "/api/labs")
+
+	var labs []engine.LabSummary
+	_ = json.NewDecoder(resp.Body).Decode(&labs)
+
+	names := map[string]bool{}
+	for _, l := range labs {
+		names[l.Name] = true
+	}
+
+	if !names["orig"] || !names["renamed"] || names["copy"] {
+		t.Fatalf("unexpected labs after clone/rename: %+v", names)
+	}
+}
+
 func TestConfigureLab(t *testing.T) {
 	srv, _ := newTestServer(true)
 	defer srv.Close()

@@ -94,7 +94,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Area          | What you can do                                                            |
 | ------------- | ------------------------------------------------------------------------- |
 | Canvas        | Add/remove nodes, draw/remove links, drag layout, edit node properties    |
-| Labs          | Create, templates, import (paste/upload YAML), open, save, delete, export   |
+| Labs          | Create, templates, import, open, save, clone, rename, delete, export        |
 | Lifecycle     | Deploy, destroy, save running configs                                       |
 | Status        | Live per-node state and management IPs                                     |
 | Console       | Browser terminal (xterm.js) into any running node                          |
@@ -121,6 +121,8 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | `POST /api/labs/import`                         | Import a topology YAML          |
 | `GET/PUT/DELETE /api/labs/{name}`               | Read / save / delete a lab     |
 | `POST /api/labs/{name}/save`                    | Save running configs            |
+| `POST /api/labs/{name}/clone`                   | Clone a lab                     |
+| `POST /api/labs/{name}/rename`                  | Rename a lab                    |
 | `GET /api/labs/{name}/yaml`                     | Download the topology YAML     |
 | `GET /api/labs/{name}/status`                   | Runtime status                 |
 | `POST /api/labs/{name}/deploy` \| `/destroy`    | Lifecycle                      |

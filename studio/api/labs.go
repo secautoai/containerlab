@@ -153,6 +153,55 @@ func (h *Handler) importLab(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, g)
 }
 
+// nameRequest carries a target lab name for clone/rename.
+type nameRequest struct {
+	Name string `json:"name"`
+}
+
+func (h *Handler) cloneLab(w http.ResponseWriter, r *http.Request) {
+	src := r.PathValue("name")
+
+	var req nameRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+		return
+	}
+
+	if err := h.Engine.CloneLab(r.Context(), src, req.Name); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{"name": req.Name})
+}
+
+func (h *Handler) renameLab(w http.ResponseWriter, r *http.Request) {
+	old := r.PathValue("name")
+
+	var req nameRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "name is required"})
+		return
+	}
+
+	if err := h.Engine.RenameLab(r.Context(), old, req.Name); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"name": req.Name})
+}
+
 func (h *Handler) saveConfigs(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

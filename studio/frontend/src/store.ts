@@ -67,6 +67,8 @@ interface StudioState {
   importLab: (yaml: string, name?: string) => Promise<void>;
   saveConfigs: () => Promise<void>;
   createFromTemplate: (templateId: string, name?: string) => Promise<void>;
+  cloneLab: (name: string, newName: string) => Promise<void>;
+  renameLab: (name: string, newName: string) => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
   toggleTheme: () => void;
@@ -427,6 +429,28 @@ export const useStore = create<StudioState>((set, get) => ({
       get().toast("success", `Created "${g.name}" from template`);
     } catch (e) {
       get().toast("error", `Template failed: ${(e as Error).message}`);
+    }
+  },
+
+  cloneLab: async (name, newName) => {
+    try {
+      await api.cloneLab(name, newName);
+      await get().refreshLabs();
+      get().toast("success", `Cloned "${name}" → "${newName}"`);
+    } catch (e) {
+      get().toast("error", `Clone failed: ${(e as Error).message}`);
+    }
+  },
+
+  renameLab: async (name, newName) => {
+    try {
+      await api.renameLab(name, newName);
+      const g = get().graph;
+      if (g?.name === name) await get().openLab(newName);
+      await get().refreshLabs();
+      get().toast("success", `Renamed "${name}" → "${newName}"`);
+    } catch (e) {
+      get().toast("error", `Rename failed: ${(e as Error).message}`);
     }
   },
 

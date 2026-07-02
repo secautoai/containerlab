@@ -573,6 +573,48 @@ func (e *ClabEngine) SaveConfigs(ctx context.Context, lab string) error {
 	return clab.Save(ctx)
 }
 
+// CloneLab copies a lab's topology into a new lab directory.
+func (e *ClabEngine) CloneLab(ctx context.Context, src, dst string) error {
+	if err := validateLabName(dst); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(filepath.Join(e.labsDir, dst)); err == nil {
+		return fmt.Errorf("lab %q already exists", dst)
+	}
+
+	g, err := e.GetLab(ctx, src)
+	if err != nil {
+		return err
+	}
+
+	g.Name = dst
+
+	return e.SaveLab(ctx, g)
+}
+
+// RenameLab renames a lab. The lab must not be deployed and the target name must
+// not already exist.
+func (e *ClabEngine) RenameLab(ctx context.Context, oldName, newName string) error {
+	if err := validateLabName(newName); err != nil {
+		return err
+	}
+
+	if _, deployed := e.deployedLabNames(ctx)[oldName]; deployed {
+		return fmt.Errorf("lab %q is deployed; destroy it before renaming", oldName)
+	}
+
+	if _, err := os.Stat(filepath.Join(e.labsDir, newName)); err == nil {
+		return fmt.Errorf("lab %q already exists", newName)
+	}
+
+	if err := e.CloneLab(ctx, oldName, newName); err != nil {
+		return err
+	}
+
+	return os.RemoveAll(filepath.Join(e.labsDir, oldName))
+}
+
 // validateLabName ensures a lab name is safe for filesystem paths.
 func validateLabName(name string) error {
 	if name == "" {

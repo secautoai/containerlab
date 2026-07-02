@@ -78,6 +78,46 @@ func TestFakeEngineLifecycle(t *testing.T) {
 	}
 }
 
+func TestFakeCloneAndRename(t *testing.T) {
+	ctx := context.Background()
+	e := NewFakeEngine(true)
+	_ = e.SaveLab(ctx, sampleGraph("src"))
+
+	// clone
+	if err := e.CloneLab(ctx, "src", "copy"); err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+
+	cp, err := e.GetLab(ctx, "copy")
+	if err != nil || cp.Name != "copy" || len(cp.Nodes) != 2 {
+		t.Fatalf("unexpected clone: %+v (err %v)", cp, err)
+	}
+
+	// clone onto existing name fails
+	if err := e.CloneLab(ctx, "src", "copy"); err == nil {
+		t.Fatal("expected error cloning onto existing lab")
+	}
+
+	// rename
+	if err := e.RenameLab(ctx, "copy", "renamed"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+
+	if _, err := e.GetLab(ctx, "copy"); err == nil {
+		t.Fatal("old lab should be gone after rename")
+	}
+
+	if g, err := e.GetLab(ctx, "renamed"); err != nil || g.Name != "renamed" {
+		t.Fatalf("renamed lab missing: %+v (err %v)", g, err)
+	}
+
+	// cannot rename a deployed lab
+	_, _ = e.Deploy(ctx, "src")
+	if err := e.RenameLab(ctx, "src", "src2"); err == nil {
+		t.Fatal("expected error renaming a deployed lab")
+	}
+}
+
 func TestFakeEngineRuntimeDown(t *testing.T) {
 	ctx := context.Background()
 	e := NewFakeEngine(false)

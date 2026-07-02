@@ -176,6 +176,10 @@ export const api = {
   labFromTemplate: (templateId: string, name?: string) =>
     req<Graph>("POST", "/api/labs/from-template", { templateId, name }),
   lint: (g: Graph) => req<LintResult>("POST", "/api/lint", g),
+  cloneLab: (name: string, newName: string) =>
+    req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/clone`, { name: newName }),
+  renameLab: (name: string, newName: string) =>
+    req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/rename`, { name: newName }),
 };
 
 export interface LintIssue {
