@@ -100,6 +100,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Console       | Browser terminal (xterm.js) into any running node                          |
 | Check         | Pre-flight topology linter (errors/warnings) — gates deploy                 |
 | Validation    | End-to-end reachability (ping matrix) with a pass/fail report             |
+| Traffic test  | iperf3 throughput between two nodes (needs iperf3-capable images)           |
 | Node ops      | Per-node start / stop / restart                                            |
 | Impairments   | Per-interface netem: delay, jitter, loss, rate, corruption                 |
 | YAML editor   | View/edit the raw `*.clab.yml` in-app and apply to the canvas               |
@@ -130,6 +131,7 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | `POST /api/labs/{name}/deploy` \| `/destroy`    | Lifecycle                      |
 | `POST /api/lint`                                | Pre-flight topology check      |
 | `POST /api/labs/{name}/validate`                | Reachability report            |
+| `POST /api/labs/{name}/iperf`                   | iperf3 throughput test          |
 | `POST /api/labs/{name}/configure`               | Auto IP addressing + config    |
 | `POST /api/labs/{name}/nodes/{node}/exec`       | Run a command on a node        |
 | `POST /api/labs/{name}/nodes/{node}/lifecycle`  | start / stop / restart a node  |

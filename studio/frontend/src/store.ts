@@ -70,6 +70,7 @@ interface StudioState {
   clearLint: () => void;
   nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
   impairNode: (node: string, params: import("./api").ImpairmentParams) => Promise<void>;
+  throughputTest: (from: string, to: string) => Promise<void>;
   configureLab: (protocol: "none" | "ospf" | "bgp") => Promise<void>;
   importLab: (yaml: string, name?: string) => Promise<void>;
   saveConfigs: () => Promise<void>;
@@ -493,6 +494,18 @@ export const useStore = create<StudioState>((set, get) => ({
       get().toast("success", `Renamed "${name}" → "${newName}"`);
     } catch (e) {
       get().toast("error", `Rename failed: ${(e as Error).message}`);
+    }
+  },
+
+  throughputTest: async (from, to) => {
+    const g = get().graph;
+    if (!g) return;
+    get().toast("info", `Running iperf3 ${from} → ${to}…`);
+    try {
+      const res = await api.iperf(g.name, from, to);
+      get().toast("success", `${from} → ${to}: ${res.summary}`);
+    } catch (e) {
+      get().toast("error", `iperf3 failed: ${(e as Error).message}`);
     }
   },
 

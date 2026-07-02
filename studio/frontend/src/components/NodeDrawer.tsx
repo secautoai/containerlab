@@ -3,6 +3,7 @@ import { X, Terminal, Trash2, Play, Square, RotateCw } from "lucide-react";
 import { useStore } from "../store";
 import type { GraphNode } from "../api";
 import ImpairmentSection from "./ImpairmentSection";
+import TrafficTestSection from "./TrafficTestSection";
 
 // NodeDrawer edits the properties of the currently selected node.
 export default function NodeDrawer() {
@@ -116,6 +117,7 @@ export default function NodeDrawer() {
         )}
 
         {running && <ImpairmentSection node={node.name} />}
+        {running && <TrafficTestSection node={node.name} />}
       </div>
 
       <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-800">

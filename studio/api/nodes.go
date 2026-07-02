@@ -112,6 +112,37 @@ func (h *Handler) impairNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "impairment applied"})
 }
 
+// iperfRequest selects the source and target nodes for a throughput test.
+type iperfRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func (h *Handler) iperfLab(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+
+	var req iperfRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.From == "" || req.To == "" || req.From == req.To {
+		writeJSON(w, http.StatusBadRequest,
+			errorResponse{Error: "from and to must be two distinct nodes"})
+
+		return
+	}
+
+	res, err := h.Engine.Throughput(r.Context(), lab, req.From, req.To)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, res)
+}
+
 func (h *Handler) validateLab(w http.ResponseWriter, r *http.Request) {
 	lab := r.PathValue("name")
 

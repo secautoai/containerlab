@@ -177,6 +177,12 @@ export const api = {
   labFromTemplate: (templateId: string, name?: string) =>
     req<Graph>("POST", "/api/labs/from-template", { templateId, name }),
   lint: (g: Graph) => req<LintResult>("POST", "/api/lint", g),
+  iperf: (name: string, from: string, to: string) =>
+    req<{ summary: string; sentMbitsPerSec: number; recvMbitsPerSec: number }>(
+      "POST",
+      `/api/labs/${encodeURIComponent(name)}/iperf`,
+      { from, to },
+    ),
   cloneLab: (name: string, newName: string) =>
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/clone`, { name: newName }),
   renameLab: (name: string, newName: string) =>

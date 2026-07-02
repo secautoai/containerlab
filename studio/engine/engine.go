@@ -121,6 +121,9 @@ type Engine interface {
 
 	// RenameLab renames a lab (new must not exist; lab must not be deployed).
 	RenameLab(ctx context.Context, oldName, newName string) error
+
+	// Throughput runs an iperf3 test from one node to another in a deployed lab.
+	Throughput(ctx context.Context, lab, from, to string) (*ThroughputResult, error)
 }
 
 // ImpairmentParams describes netem link impairments for an interface.

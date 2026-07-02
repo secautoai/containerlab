@@ -615,6 +615,11 @@ func (e *ClabEngine) RenameLab(ctx context.Context, oldName, newName string) err
 	return os.RemoveAll(filepath.Join(e.labsDir, oldName))
 }
 
+// Throughput runs an iperf3 test between two nodes of a deployed lab.
+func (e *ClabEngine) Throughput(ctx context.Context, lab, from, to string) (*ThroughputResult, error) {
+	return runThroughput(ctx, e, lab, from, to)
+}
+
 // validateLabName ensures a lab name is safe for filesystem paths.
 func validateLabName(name string) error {
 	if name == "" {

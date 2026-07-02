@@ -386,6 +386,29 @@ func (e *FakeEngine) RenameLab(_ context.Context, oldName, newName string) error
 	return nil
 }
 
+// Throughput implements Engine (in-memory: returns a stub result when deployed).
+func (e *FakeEngine) Throughput(_ context.Context, lab, from, to string) (*ThroughputResult, error) {
+	if !e.RuntimeUp {
+		return nil, ErrRuntimeUnavailable
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.deployed[lab] {
+		return nil, fmt.Errorf("lab %q is not deployed", lab)
+	}
+
+	res := &ThroughputResult{
+		From: from, To: to, Target: "fake",
+		SentBitsPerSec: 1e9, RecvBitsPerSec: 1e9,
+		SentMbitsPerSec: 1000, RecvMbitsPerSec: 1000,
+	}
+	res.Summary = "1000.0 Mbit/s sent, 1000.0 Mbit/s received, 0 retransmits"
+
+	return res, nil
+}
+
 // SaveConfigs implements Engine (in-memory: require deployed).
 func (e *FakeEngine) SaveConfigs(_ context.Context, lab string) error {
 	if !e.RuntimeUp {
