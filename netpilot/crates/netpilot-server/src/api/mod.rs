@@ -8,7 +8,7 @@ pub mod system;
 pub mod topology;
 pub mod ws;
 
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post, put};
 use axum::Router;
 
 use crate::state::AppState;
@@ -35,7 +35,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/labs/{lab}/nodes/{node}",
-            get(nodes::get_node).put(nodes::update).delete(nodes::remove),
+            get(nodes::get_node)
+                .put(nodes::update)
+                .delete(nodes::remove),
         )
         .route("/api/labs/{lab}/nodes/{node}/start", post(nodes::start))
         .route("/api/labs/{lab}/nodes/{node}/stop", post(nodes::stop))
@@ -95,9 +97,3 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ws/agent/{lab}", get(ws::agent))
         .with_state(state)
 }
-
-/// A `delete` import is used by route builders in sibling modules.
-#[allow(unused)]
-fn _keep(_: fn() -> axum::routing::MethodRouter<AppState>) {}
-#[allow(unused_imports)]
-use delete as _delete_used;

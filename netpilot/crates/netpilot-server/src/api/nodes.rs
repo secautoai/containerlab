@@ -84,7 +84,10 @@ pub async fn create(
             let name = match req.name {
                 Some(n) if !n.trim().is_empty() => {
                     if lab.nodes.values().any(|x| x.name == n.trim()) {
-                        return Err(ApiError::conflict(format!("node name '{}' in use", n.trim())));
+                        return Err(ApiError::conflict(format!(
+                            "node name '{}' in use",
+                            n.trim()
+                        )));
                     }
                     n.trim().to_string()
                 }
@@ -94,7 +97,11 @@ pub async fn create(
                         .chars()
                         .take_while(|c| c.is_ascii_alphanumeric())
                         .collect();
-                    let prefix = if prefix.is_empty() { "N".into() } else { prefix };
+                    let prefix = if prefix.is_empty() {
+                        "N".into()
+                    } else {
+                        prefix
+                    };
                     lab.next_node_name(&prefix)
                 }
             };

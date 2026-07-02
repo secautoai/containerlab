@@ -31,12 +31,14 @@ pub async fn export_lab(
         zip.start_file("lab.yaml", opts)
             .map_err(|e| ApiError::internal(e.to_string()))?;
         zip.write_all(yaml.as_bytes())?;
-        zip.finish().map_err(|e| ApiError::internal(e.to_string()))?;
+        zip.finish()
+            .map_err(|e| ApiError::internal(e.to_string()))?;
     }
 
     let filename = format!(
         "attachment; filename=\"{}.zip\"",
-        lab.name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_")
+        lab.name
+            .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_")
     );
     Ok((
         [
@@ -51,10 +53,7 @@ pub async fn export_lab(
 
 /// Accepts a NetPilot export zip, a bare lab.yaml, an EVE-NG .unl XML
 /// document, or a containerlab topology YAML. Format is sniffed.
-pub async fn import_lab(
-    State(state): State<AppState>,
-    body: Bytes,
-) -> ApiResult<Json<Lab>> {
+pub async fn import_lab(State(state): State<AppState>, body: Bytes) -> ApiResult<Json<Lab>> {
     if body.is_empty() {
         return Err(ApiError::bad_request("empty import body"));
     }
@@ -66,7 +65,10 @@ pub async fn import_lab(
         let trimmed = text.trim_start();
         if trimmed.starts_with("<?xml") || trimmed.starts_with("<lab") {
             import_unl(&text)?
-        } else if text.contains("topology:") && text.contains("nodes:") && !text.contains("modified_at") {
+        } else if text.contains("topology:")
+            && text.contains("nodes:")
+            && !text.contains("modified_at")
+        {
             import_clab(&text)?
         } else {
             serde_yaml::from_str::<Lab>(&text)
@@ -283,8 +285,14 @@ fn import_unl(xml: &str) -> ApiResult<Lab> {
                 interfaces: n.ethernet.unwrap_or(4).max(1),
                 console: Default::default(),
                 icon: String::new(),
-                x: n.left.as_deref().and_then(parse_px).unwrap_or(100.0 + (i as f64 % 6.0) * 160.0),
-                y: n.top.as_deref().and_then(parse_px).unwrap_or(100.0 + (i as f64 / 6.0).floor() * 140.0),
+                x: n.left
+                    .as_deref()
+                    .and_then(parse_px)
+                    .unwrap_or(100.0 + (i as f64 % 6.0) * 160.0),
+                y: n.top
+                    .as_deref()
+                    .and_then(parse_px)
+                    .unwrap_or(100.0 + (i as f64 / 6.0).floor() * 140.0),
                 startup_config: configs.get(&n.id).cloned(),
                 boot_delay_s: 0,
                 overrides: BTreeMap::new(),
@@ -296,7 +304,9 @@ fn import_unl(xml: &str) -> ApiResult<Lab> {
     // visible network objects.
     let mut net_endpoints: HashMap<u32, Vec<(Uuid, u32)>> = HashMap::new();
     for n in &topo.nodes.items {
-        let Some(&nid) = node_ids.get(&n.id) else { continue };
+        let Some(&nid) = node_ids.get(&n.id) else {
+            continue;
+        };
         for itf in &n.interfaces {
             if let Some(net) = itf.network_id {
                 net_endpoints.entry(net).or_default().push((nid, itf.id));
@@ -364,7 +374,7 @@ fn parse_px(s: &str) -> Option<f64> {
 fn decode_b64(s: &str) -> Option<String> {
     // Tiny base64 decoder (standard alphabet) — avoids a dependency.
     let cleaned: Vec<u8> = s.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    if cleaned.is_empty() || cleaned.len() % 4 != 0 {
+    if cleaned.is_empty() || !cleaned.len().is_multiple_of(4) {
         return None;
     }
     let val = |c: u8| -> Option<u32> {
@@ -490,8 +500,12 @@ fn import_clab(yaml: &str) -> ApiResult<Lab> {
         }
         let mut eps = Vec::new();
         for ep in &l.endpoints {
-            let Some((node_name, iface)) = ep.split_once(':') else { continue };
-            let Some(&node) = by_name.get(node_name) else { continue };
+            let Some((node_name, iface)) = ep.split_once(':') else {
+                continue;
+            };
+            let Some(&node) = by_name.get(node_name) else {
+                continue;
+            };
             // eth1 / e1-1 / Gi0-0 → take trailing digits as index
             let idx: u32 = iface
                 .chars()

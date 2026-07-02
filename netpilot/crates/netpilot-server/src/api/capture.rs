@@ -11,7 +11,11 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 fn capture_path(state: &AppState, lab: Uuid, node: Uuid, iface: u32) -> std::path::PathBuf {
-    let dir = state.store.data_dir().join("captures").join(lab.to_string());
+    let dir = state
+        .store
+        .data_dir()
+        .join("captures")
+        .join(lab.to_string());
     let _ = std::fs::create_dir_all(&dir);
     dir.join(format!("{node}-{iface}.pcap"))
 }
@@ -31,9 +35,11 @@ pub async fn start(
             &path,
         )
         .map_err(|e| ApiError::conflict(format!("capture: {e} (node must be running)")))?;
-    state
-        .events
-        .log(Some(lab_id), "info", format!("capture started on {node_id}/{iface}"));
+    state.events.log(
+        Some(lab_id),
+        "info",
+        format!("capture started on {node_id}/{iface}"),
+    );
     Ok(Json(serde_json::json!({ "capturing": true })))
 }
 

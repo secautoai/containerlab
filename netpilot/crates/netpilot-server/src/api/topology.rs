@@ -2,9 +2,7 @@
 
 use axum::extract::{Path, State};
 use axum::Json;
-use netpilot_core::{
-    Annotation, AnnotationKind, Endpoint, Impairment, Link, Network, NetworkKind,
-};
+use netpilot_core::{Annotation, AnnotationKind, Endpoint, Impairment, Link, Network, NetworkKind};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -199,9 +197,10 @@ pub async fn update_link(
         })
         .unwrap_or_default();
     switch.set_impairment(link_id, imp);
-    state
-        .events
-        .publish(netpilot_core::Event::LinkUpdated { lab: lab_id, link: link_id });
+    state.events.publish(netpilot_core::Event::LinkUpdated {
+        lab: lab_id,
+        link: link_id,
+    });
     Ok(Json(link))
 }
 

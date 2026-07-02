@@ -37,7 +37,11 @@ impl StateToolbox {
 #[async_trait]
 impl LabToolbox for StateToolbox {
     async fn get_lab(&self) -> Result<Value, String> {
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let states = self.state.lab_states(self.lab_id).await;
         let states_by_name: BTreeMap<String, String> = lab
             .nodes
@@ -90,7 +94,10 @@ impl LabToolbox for StateToolbox {
             .ok_or("missing name")?
             .to_string();
         let catalog = self.state.templates.read().await;
-        let template = catalog.get(&template_id).map_err(|e| e.to_string())?.clone();
+        let template = catalog
+            .get(&template_id)
+            .map_err(|e| e.to_string())?
+            .clone();
         drop(catalog);
         let images = self.state.images.scan().unwrap_or_default();
         let image = images
@@ -113,14 +120,19 @@ impl LabToolbox for StateToolbox {
                     name: name.clone(),
                     template: template.id.clone(),
                     image,
-                    cpus: args.get("cpus").and_then(|v| v.as_u64()).unwrap_or(template.cpus as u64)
-                        as u32,
-                    ram_mb: args.get("ram_mb").and_then(|v| v.as_u64()).unwrap_or(template.ram_mb as u64)
-                        as u32,
+                    cpus: args
+                        .get("cpus")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(template.cpus as u64) as u32,
+                    ram_mb: args
+                        .get("ram_mb")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(template.ram_mb as u64) as u32,
                     interfaces: args
                         .get("interfaces")
                         .and_then(|v| v.as_u64())
-                        .unwrap_or(template.interfaces as u64) as u32,
+                        .unwrap_or(template.interfaces as u64)
+                        as u32,
                     console: template.console,
                     icon: template.icon.clone(),
                     x: args.get("x").and_then(|v| v.as_f64()).unwrap_or(200.0),
@@ -146,7 +158,11 @@ impl LabToolbox for StateToolbox {
             .and_then(|v| v.as_str())
             .ok_or("missing name")?
             .to_string();
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let node = self.find_node(&lab, &name)?;
         self.state
             .mutate_lab(self.lab_id, |lab| {
@@ -174,7 +190,11 @@ impl LabToolbox for StateToolbox {
     }
 
     async fn delete_node(&self, name: String) -> Result<Value, String> {
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let node = self.find_node(&lab, &name)?;
         self.state
             .stop_node(self.lab_id, node.id)
@@ -193,36 +213,39 @@ impl LabToolbox for StateToolbox {
             .and_then(|v| v.as_str())
             .ok_or("missing a_node")?;
         let a_iface = args.get("a_iface").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let a = self.find_node(&lab, a_node)?;
 
-        let (b, desc): (Endpoint, String) = if let Some(net_name) =
-            args.get("network").and_then(|v| v.as_str())
-        {
-            let net = lab
-                .networks
-                .values()
-                .find(|n| n.name.eq_ignore_ascii_case(net_name))
-                .ok_or_else(|| format!("no network named '{net_name}'"))?;
-            (
-                Endpoint::Network { network: net.id },
-                format!("{a_node}[{a_iface}] <-> {net_name}"),
-            )
-        } else {
-            let b_node = args
-                .get("b_node")
-                .and_then(|v| v.as_str())
-                .ok_or("missing b_node or network")?;
-            let b_iface = args.get("b_iface").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let bn = self.find_node(&lab, b_node)?;
-            (
-                Endpoint::Node {
-                    node: bn.id,
-                    iface: b_iface,
-                },
-                format!("{a_node}[{a_iface}] <-> {b_node}[{b_iface}]"),
-            )
-        };
+        let (b, desc): (Endpoint, String) =
+            if let Some(net_name) = args.get("network").and_then(|v| v.as_str()) {
+                let net = lab
+                    .networks
+                    .values()
+                    .find(|n| n.name.eq_ignore_ascii_case(net_name))
+                    .ok_or_else(|| format!("no network named '{net_name}'"))?;
+                (
+                    Endpoint::Network { network: net.id },
+                    format!("{a_node}[{a_iface}] <-> {net_name}"),
+                )
+            } else {
+                let b_node = args
+                    .get("b_node")
+                    .and_then(|v| v.as_str())
+                    .ok_or("missing b_node or network")?;
+                let b_iface = args.get("b_iface").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let bn = self.find_node(&lab, b_node)?;
+                (
+                    Endpoint::Node {
+                        node: bn.id,
+                        iface: b_iface,
+                    },
+                    format!("{a_node}[{a_iface}] <-> {b_node}[{b_iface}]"),
+                )
+            };
 
         let link = self
             .state
@@ -252,7 +275,11 @@ impl LabToolbox for StateToolbox {
             .and_then(|v| v.as_str())
             .ok_or("missing name")?
             .to_string();
-        let kind = match args.get("kind").and_then(|v| v.as_str()).unwrap_or("bridge") {
+        let kind = match args
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("bridge")
+        {
             "nat" => NetworkKind::Nat,
             "management" => NetworkKind::Management,
             "cloud" => NetworkKind::Cloud,
@@ -278,7 +305,11 @@ impl LabToolbox for StateToolbox {
     }
 
     async fn set_startup_config(&self, node: String, config: String) -> Result<Value, String> {
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let n = self.find_node(&lab, &node)?;
         self.state
             .mutate_lab(self.lab_id, |lab| {
@@ -293,7 +324,11 @@ impl LabToolbox for StateToolbox {
     async fn start(&self, node: Option<String>) -> Result<Value, String> {
         match node {
             Some(name) => {
-                let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+                let lab = self
+                    .state
+                    .store
+                    .load(self.lab_id)
+                    .map_err(|e| e.to_string())?;
                 let n = self.find_node(&lab, &name)?;
                 self.state
                     .start_node(self.lab_id, n.id)
@@ -315,7 +350,11 @@ impl LabToolbox for StateToolbox {
     async fn stop(&self, node: Option<String>) -> Result<Value, String> {
         match node {
             Some(name) => {
-                let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+                let lab = self
+                    .state
+                    .store
+                    .load(self.lab_id)
+                    .map_err(|e| e.to_string())?;
                 let n = self.find_node(&lab, &name)?;
                 self.state
                     .stop_node(self.lab_id, n.id)
@@ -324,7 +363,10 @@ impl LabToolbox for StateToolbox {
                 Ok(json!({"stopped": name}))
             }
             None => {
-                self.state.stop_lab(self.lab_id).await.map_err(|e| e.message)?;
+                self.state
+                    .stop_lab(self.lab_id)
+                    .await
+                    .map_err(|e| e.message)?;
                 Ok(json!({"stopped": "all"}))
             }
         }
@@ -336,10 +378,16 @@ impl LabToolbox for StateToolbox {
         command: String,
         timeout_s: u32,
     ) -> Result<Value, String> {
-        let lab = self.state.store.load(self.lab_id).map_err(|e| e.to_string())?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
         let n = self.find_node(&lab, &node)?;
         if n.console != ConsoleKind::Serial {
-            return Err(format!("{node} has a VNC console; run_command needs a serial console"));
+            return Err(format!(
+                "{node} has a VNC console; run_command needs a serial console"
+            ));
         }
         let sock = self
             .state
@@ -414,9 +462,11 @@ pub async fn run_agent_socket(socket: WebSocket, state: AppState, lab_id: Uuid) 
         Err(e) => {
             let _ = ws_tx
                 .send(Message::Text(
-                    serde_json::to_string(&AgentEvent::Error { message: e.to_string() })
-                        .unwrap_or_default()
-                        .into(),
+                    serde_json::to_string(&AgentEvent::Error {
+                        message: e.to_string(),
+                    })
+                    .unwrap_or_default()
+                    .into(),
                 ))
                 .await;
             return;
@@ -434,8 +484,12 @@ pub async fn run_agent_socket(socket: WebSocket, state: AppState, lab_id: Uuid) 
             Message::Close(_) => break,
             _ => continue,
         };
-        let Ok(v) = serde_json::from_str::<Value>(&text) else { continue };
-        let Some(user_message) = v.get("message").and_then(|m| m.as_str()) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        let Some(user_message) = v.get("message").and_then(|m| m.as_str()) else {
+            continue;
+        };
 
         let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
         let user_message = user_message.to_string();

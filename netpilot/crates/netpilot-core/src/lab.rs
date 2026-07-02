@@ -445,16 +445,28 @@ mod tests {
         lab.nodes.insert(id2, n2);
 
         lab.add_link(Link::between(
-            Endpoint::Node { node: id1, iface: 0 },
-            Endpoint::Node { node: id2, iface: 0 },
+            Endpoint::Node {
+                node: id1,
+                iface: 0,
+            },
+            Endpoint::Node {
+                node: id2,
+                iface: 0,
+            },
         ))
         .unwrap();
 
         // same interface again -> busy
         let err = lab
             .add_link(Link::between(
-                Endpoint::Node { node: id1, iface: 0 },
-                Endpoint::Node { node: id2, iface: 1 },
+                Endpoint::Node {
+                    node: id1,
+                    iface: 0,
+                },
+                Endpoint::Node {
+                    node: id2,
+                    iface: 1,
+                },
             ))
             .unwrap_err();
         assert!(matches!(err, CoreError::InterfaceBusy { .. }));
@@ -462,8 +474,14 @@ mod tests {
         // out-of-range interface
         let err = lab
             .add_link(Link::between(
-                Endpoint::Node { node: id1, iface: 9 },
-                Endpoint::Node { node: id2, iface: 1 },
+                Endpoint::Node {
+                    node: id1,
+                    iface: 9,
+                },
+                Endpoint::Node {
+                    node: id2,
+                    iface: 1,
+                },
             ))
             .unwrap_err();
         assert!(matches!(err, CoreError::InvalidInterface { .. }));

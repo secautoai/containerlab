@@ -49,13 +49,7 @@ fn iso_name(name: &str) -> String {
 }
 
 /// One directory record with optional Rock Ridge system-use entries.
-fn dir_record(
-    name_bytes: &[u8],
-    extent: u32,
-    size: u32,
-    is_dir: bool,
-    susp: &[u8],
-) -> Vec<u8> {
+fn dir_record(name_bytes: &[u8], extent: u32, size: u32, is_dir: bool, susp: &[u8]) -> Vec<u8> {
     let name_len = name_bytes.len();
     let mut base = 33 + name_len;
     if base % 2 == 1 {
@@ -97,7 +91,13 @@ pub fn build_iso(volume_id: &str, files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
 
     // --- root directory extent ---
     let mut root = Vec::new();
-    root.extend(dir_record(&[0u8], ROOT_SECTOR, SECTOR as u32, true, &rr_sp())); // "."
+    root.extend(dir_record(
+        &[0u8],
+        ROOT_SECTOR,
+        SECTOR as u32,
+        true,
+        &rr_sp(),
+    )); // "."
     root.extend(dir_record(&[1u8], ROOT_SECTOR, SECTOR as u32, true, &[])); // ".."
 
     let mut extent = first_file_sector;
@@ -179,7 +179,10 @@ pub fn build_iso(volume_id: &str, files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
         assert_eq!(iso.len(), sector as usize * SECTOR);
         iso.extend_from_slice(data);
         let pad = iso.len().next_multiple_of(SECTOR) - iso.len();
-        iso.extend(std::iter::repeat_n(0u8, pad.max(if data.is_empty() { SECTOR } else { 0 })));
+        iso.extend(std::iter::repeat_n(
+            0u8,
+            pad.max(if data.is_empty() { SECTOR } else { 0 }),
+        ));
     }
     Ok(iso)
 }
@@ -282,8 +285,11 @@ mod tests {
 
     #[test]
     fn iso_structure_valid() {
-        let iso = build_iso("cidata", &[("user-data", b"#cloud-config\n"), ("meta-data", b"id: x\n")])
-            .unwrap();
+        let iso = build_iso(
+            "cidata",
+            &[("user-data", b"#cloud-config\n"), ("meta-data", b"id: x\n")],
+        )
+        .unwrap();
         // PVD at sector 16
         assert_eq!(&iso[16 * SECTOR + 1..16 * SECTOR + 6], b"CD001");
         assert_eq!(iso[16 * SECTOR], 1);
@@ -323,14 +329,11 @@ mod tests {
     fn media_dispatch() {
         let dir = tempfile::tempdir().unwrap();
         // no config -> no media
-        assert!(build_config_media(
-            &ConfigDelivery::CloudInit,
-            "h1",
-            None,
-            dir.path()
-        )
-        .unwrap()
-        .is_none());
+        assert!(
+            build_config_media(&ConfigDelivery::CloudInit, "h1", None, dir.path())
+                .unwrap()
+                .is_none()
+        );
 
         let m = build_config_media(
             &ConfigDelivery::CdromIso {

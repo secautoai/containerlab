@@ -7,7 +7,6 @@ use serde_json::Value;
 use crate::{AiError, Result};
 
 pub const DEFAULT_MODEL: &str = "claude-sonnet-5";
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,19 +59,23 @@ pub struct ApiResponse {
 pub struct Claude {
     http: reqwest::Client,
     api_key: String,
+    base_url: String,
     pub model: String,
 }
 
 impl Claude {
     /// Build from the environment (`ANTHROPIC_API_KEY`, optional
-    /// `NETPILOT_AI_MODEL`).
+    /// `NETPILOT_AI_MODEL` and `ANTHROPIC_BASE_URL`).
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| AiError::NoApiKey)?;
         let model =
             std::env::var("NETPILOT_AI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        let base_url = std::env::var("ANTHROPIC_BASE_URL")
+            .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
         Ok(Self {
             http: reqwest::Client::new(),
             api_key,
+            base_url,
             model,
         })
     }
@@ -92,7 +95,7 @@ impl Claude {
         });
         let resp = self
             .http
-            .post(API_URL)
+            .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
             .json(&body)

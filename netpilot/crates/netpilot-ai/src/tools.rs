@@ -34,8 +34,12 @@ pub trait LabToolbox: Send + Sync {
     /// Stop a node (or all when node is None).
     async fn stop(&self, node: Option<String>) -> Result<Value, String>;
     /// Run a CLI command on a running node's console; returns output.
-    async fn run_command(&self, node: String, command: String, timeout_s: u32)
-        -> Result<Value, String>;
+    async fn run_command(
+        &self,
+        node: String,
+        command: String,
+        timeout_s: u32,
+    ) -> Result<Value, String>;
 }
 
 /// Tool definitions advertised to the model.
@@ -202,7 +206,10 @@ pub async fn dispatch(
         "run_command" => {
             let node = s(input, "node").ok_or("missing node")?;
             let command = s(input, "command").ok_or("missing command")?;
-            let timeout = input.get("timeout_s").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+            let timeout = input
+                .get("timeout_s")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10) as u32;
             toolbox.run_command(node, command, timeout).await
         }
         other => Err(format!("unknown tool: {other}")),

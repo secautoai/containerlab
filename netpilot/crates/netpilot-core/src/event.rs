@@ -10,13 +10,31 @@ use crate::lab::NodeState;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
-    LabCreated { lab: Uuid },
-    LabUpdated { lab: Uuid },
-    LabDeleted { lab: Uuid },
-    NodeState { lab: Uuid, node: Uuid, state: NodeState, detail: Option<String> },
-    LinkUpdated { lab: Uuid, link: Uuid },
+    LabCreated {
+        lab: Uuid,
+    },
+    LabUpdated {
+        lab: Uuid,
+    },
+    LabDeleted {
+        lab: Uuid,
+    },
+    NodeState {
+        lab: Uuid,
+        node: Uuid,
+        state: NodeState,
+        detail: Option<String>,
+    },
+    LinkUpdated {
+        lab: Uuid,
+        link: Uuid,
+    },
     /// Free-form log line (orchestrator, agent...) for the UI activity feed.
-    Log { lab: Option<Uuid>, level: String, message: String },
+    Log {
+        lab: Option<Uuid>,
+        level: String,
+        message: String,
+    },
 }
 
 /// Cheap clonable broadcast bus.

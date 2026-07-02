@@ -64,7 +64,10 @@ impl AppState {
         let mut rx = events.subscribe();
         tokio::spawn(async move {
             while let Ok(ev) = rx.recv().await {
-                if let Event::NodeState { lab, node, state, .. } = ev {
+                if let Event::NodeState {
+                    lab, node, state, ..
+                } = ev
+                {
                     states.write().await.insert((lab, node), state);
                 }
             }
@@ -129,15 +132,12 @@ impl AppState {
         drop(templates);
 
         // Image: node.image names a version under images/<template>/.
-        let image = self
-            .images
-            .find(&node.template, &node.image)
-            .map_err(|_| {
-                ApiError::bad_request(format!(
-                    "no image for template '{}' version '{}' — upload one under images/{}/{}/",
-                    node.template, node.image, node.template, node.image
-                ))
-            })?;
+        let image = self.images.find(&node.template, &node.image).map_err(|_| {
+            ApiError::bad_request(format!(
+                "no image for template '{}' version '{}' — upload one under images/{}/{}/",
+                node.template, node.image, node.template, node.image
+            ))
+        })?;
 
         let node_dir = self.store.node_dir(lab_id, node_id);
         std::fs::create_dir_all(&node_dir).map_err(CoreError::from)?;
@@ -214,18 +214,33 @@ impl AppState {
 
         match (&link.a, &link.b) {
             (
-                Endpoint::Node { node: na, iface: ia },
-                Endpoint::Node { node: nb, iface: ib },
+                Endpoint::Node {
+                    node: na,
+                    iface: ia,
+                },
+                Endpoint::Node {
+                    node: nb,
+                    iface: ib,
+                },
             ) => {
-                let pa = PortId { node: *na, iface: *ia };
-                let pb = PortId { node: *nb, iface: *ib };
+                let pa = PortId {
+                    node: *na,
+                    iface: *ia,
+                };
+                let pb = PortId {
+                    node: *nb,
+                    iface: *ib,
+                };
                 if switch.is_attached(pa) && switch.is_attached(pb) {
                     let _ = switch.connect_p2p(link.id, pa, pb, imp);
                 }
             }
             (Endpoint::Node { node, iface }, Endpoint::Network { network })
             | (Endpoint::Network { network }, Endpoint::Node { node, iface }) => {
-                let p = PortId { node: *node, iface: *iface };
+                let p = PortId {
+                    node: *node,
+                    iface: *iface,
+                };
                 if switch.is_attached(p) && lab.networks.contains_key(network) {
                     switch.join_segment(*network, p, Some((link.id, imp)));
                 }
@@ -255,7 +270,10 @@ impl AppState {
         let lab = self.store.load(lab_id)?;
         if let Ok(node) = lab.node(node_id) {
             for i in 0..node.interfaces {
-                switch.detach(PortId { node: node_id, iface: i });
+                switch.detach(PortId {
+                    node: node_id,
+                    iface: i,
+                });
             }
         }
         Ok(())
@@ -285,8 +303,7 @@ impl AppState {
         nodes.sort_by_key(|n| n.boot_delay_s);
         for node in nodes {
             if node.boot_delay_s > 0 {
-                tokio::time::sleep(std::time::Duration::from_secs(node.boot_delay_s as u64))
-                    .await;
+                tokio::time::sleep(std::time::Duration::from_secs(node.boot_delay_s as u64)).await;
             }
             if let Err(e) = self.start_node(lab_id, node.id).await {
                 self.events

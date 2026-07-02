@@ -32,9 +32,7 @@ pub async fn status(State(state): State<AppState>) -> ApiResult<Json<SystemStatu
 
 fn which(binary: &str) -> bool {
     std::env::var_os("PATH")
-        .map(|paths| {
-            std::env::split_paths(&paths).any(|dir| dir.join(binary).is_file())
-        })
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(binary).is_file()))
         .unwrap_or(false)
 }
 
@@ -64,5 +62,7 @@ pub async fn templates(State(state): State<AppState>) -> ApiResult<Json<Vec<Temp
 }
 
 pub async fn images(State(state): State<AppState>) -> ApiResult<Json<Vec<DiskImage>>> {
-    Ok(Json(state.images.scan().map_err(crate::error::ApiError::from)?))
+    Ok(Json(
+        state.images.scan().map_err(crate::error::ApiError::from)?,
+    ))
 }

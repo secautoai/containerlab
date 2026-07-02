@@ -49,7 +49,7 @@ impl QmpClient {
         if n == 0 {
             return Err(QemuError::Qmp("connection closed".into()));
         }
-        Ok(serde_json::from_str(&line).map_err(|e| QemuError::Qmp(format!("bad json: {e}")))?)
+        serde_json::from_str(&line).map_err(|e| QemuError::Qmp(format!("bad json: {e}")))
     }
 
     /// Execute a command, skipping interleaved events, returning `return`.

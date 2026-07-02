@@ -18,9 +18,17 @@ pub enum AgentEvent {
     /// Assistant prose (a full text block).
     Text { text: String },
     /// The agent is invoking a tool.
-    ToolCall { id: String, name: String, input: Value },
+    ToolCall {
+        id: String,
+        name: String,
+        input: Value,
+    },
     /// A tool finished.
-    ToolResult { id: String, output: String, is_error: bool },
+    ToolResult {
+        id: String,
+        output: String,
+        is_error: bool,
+    },
     /// Turn finished.
     Done,
     /// Fatal error for this turn.
@@ -88,7 +96,11 @@ impl AgentSession {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = tx.send(AgentEvent::Error { message: e.to_string() }).await;
+                    let _ = tx
+                        .send(AgentEvent::Error {
+                            message: e.to_string(),
+                        })
+                        .await;
                     // Drop the failed exchange so the session stays usable.
                     self.history.pop();
                     return Err(e);
@@ -220,7 +232,12 @@ mod tests {
         async fn stop(&self, _: Option<String>) -> Result<Value, String> {
             Ok(json!({}))
         }
-        async fn run_command(&self, node: String, command: String, _: u32) -> Result<Value, String> {
+        async fn run_command(
+            &self,
+            node: String,
+            command: String,
+            _: u32,
+        ) -> Result<Value, String> {
             Ok(json!(format!("{node}# {command}\nok")))
         }
     }
@@ -231,9 +248,13 @@ mod tests {
         let out = dispatch(&lab, "get_lab", &json!({})).await.unwrap();
         assert_eq!(out, json!({"nodes": []}));
 
-        let out = dispatch(&lab, "run_command", &json!({"node": "R1", "command": "show ip route"}))
-            .await
-            .unwrap();
+        let out = dispatch(
+            &lab,
+            "run_command",
+            &json!({"node": "R1", "command": "show ip route"}),
+        )
+        .await
+        .unwrap();
         assert!(out.as_str().unwrap().contains("R1# show ip route"));
 
         let err = dispatch(&lab, "create_link", &json!({"a_node": "R1", "a_iface": 0}))

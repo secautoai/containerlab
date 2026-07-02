@@ -137,10 +137,13 @@ impl NodeSupervisor {
             return Err(QemuError::Other(detail));
         }
 
-        self.inner
-            .lock()
-            .await
-            .insert(key, RunningNode { child, spec: spec.clone() });
+        self.inner.lock().await.insert(
+            key,
+            RunningNode {
+                child,
+                spec: spec.clone(),
+            },
+        );
         self.publish(spec.lab_id, spec.node_id, NodeState::Running, None);
 
         // Reaper: notice unexpected exits and clean up state.
@@ -149,13 +152,20 @@ impl NodeSupervisor {
             loop {
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 let mut running = supervisor.inner.lock().await;
-                let Some(entry) = running.get_mut(&key) else { return };
+                let Some(entry) = running.get_mut(&key) else {
+                    return;
+                };
                 match entry.child.try_wait() {
                     Ok(Some(status)) => {
                         running.remove(&key);
                         drop(running);
                         tracing::info!(?key, "qemu exited: {status}");
-                        supervisor.publish(key.0, key.1, NodeState::Stopped, Some(format!("exited: {status}")));
+                        supervisor.publish(
+                            key.0,
+                            key.1,
+                            NodeState::Stopped,
+                            Some(format!("exited: {status}")),
+                        );
                         return;
                     }
                     Ok(None) => {}
@@ -272,9 +282,21 @@ mod tests {
 
         // starting then error events
         let e1 = rx.recv().await.unwrap();
-        assert!(matches!(e1, Event::NodeState { state: NodeState::Starting, .. }));
+        assert!(matches!(
+            e1,
+            Event::NodeState {
+                state: NodeState::Starting,
+                ..
+            }
+        ));
         let e2 = rx.recv().await.unwrap();
-        assert!(matches!(e2, Event::NodeState { state: NodeState::Error, .. }));
+        assert!(matches!(
+            e2,
+            Event::NodeState {
+                state: NodeState::Error,
+                ..
+            }
+        ));
         assert!(!sup.is_running(spec.lab_id, spec.node_id).await);
     }
 

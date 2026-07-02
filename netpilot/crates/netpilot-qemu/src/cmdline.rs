@@ -79,9 +79,8 @@ impl NodeBootSpec {
     /// Build the full argument list (excluding argv[0]).
     pub fn build_args(&self) -> Vec<String> {
         let mut a: Vec<String> = Vec::new();
-        let push = |a: &mut Vec<String>, args: &[&str]| {
-            a.extend(args.iter().map(|s| s.to_string()))
-        };
+        let push =
+            |a: &mut Vec<String>, args: &[&str]| a.extend(args.iter().map(|s| s.to_string()));
 
         push(&mut a, &["-name", &self.name]);
         push(&mut a, &["-uuid", &self.node_id.to_string()]);
@@ -157,7 +156,9 @@ impl NodeBootSpec {
         // Extra PCI bridges if the NIC count needs them.
         let nic_count = self.nics.len();
         if nic_count > ROOT_BUS_NICS {
-            let bridges = nic_count.saturating_sub(ROOT_BUS_NICS).div_ceil(NICS_PER_BRIDGE);
+            let bridges = nic_count
+                .saturating_sub(ROOT_BUS_NICS)
+                .div_ceil(NICS_PER_BRIDGE);
             for b in 0..bridges {
                 a.push("-device".into());
                 a.push(format!("pci-bridge,chassis_nr={},id=pci.{}", b + 1, b + 1));
@@ -173,10 +174,7 @@ impl NodeBootSpec {
                 wiring.switch_port, wiring.qemu_port
             ));
             a.push("-device".into());
-            let mut dev = format!(
-                "{},netdev=np{i},mac={mac}",
-                self.qemu.nic_model.qemu_name()
-            );
+            let mut dev = format!("{},netdev=np{i},mac={mac}", self.qemu.nic_model.qemu_name());
             if i >= ROOT_BUS_NICS {
                 let bridge = 1 + (i - ROOT_BUS_NICS) / NICS_PER_BRIDGE;
                 let slot = 1 + (i - ROOT_BUS_NICS) % NICS_PER_BRIDGE;

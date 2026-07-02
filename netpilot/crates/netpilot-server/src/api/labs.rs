@@ -133,7 +133,8 @@ pub async fn start(
     let s = state.clone();
     tokio::spawn(async move {
         if let Err(e) = s.start_lab(lab_id).await {
-            s.events.log(Some(lab_id), "error", format!("lab start: {e}"));
+            s.events
+                .log(Some(lab_id), "error", format!("lab start: {e}"));
         }
     });
     Ok(Json(serde_json::json!({ "starting": lab_id })))

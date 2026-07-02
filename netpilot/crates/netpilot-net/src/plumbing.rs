@@ -65,7 +65,9 @@ impl Plumbing {
             .runner
             .run(
                 "ethtool",
-                &["-K", tap, "tx", "off", "rx", "off", "tso", "off", "gso", "off", "gro", "off"],
+                &[
+                    "-K", tap, "tx", "off", "rx", "off", "tso", "off", "gso", "off", "gro", "off",
+                ],
             )
             .await;
         self.runner
@@ -94,14 +96,29 @@ impl Plumbing {
             .run_ok("sysctl", &["-w", "net.ipv4.ip_forward=1"])
             .await?;
         // nftables: one table for netpilot, idempotent recreate of the rule.
-        let _ = self.runner.run("nft", &["add", "table", "ip", "netpilot"]).await;
+        let _ = self
+            .runner
+            .run("nft", &["add", "table", "ip", "netpilot"])
+            .await;
         let _ = self
             .runner
             .run(
                 "nft",
                 &[
-                    "add", "chain", "ip", "netpilot", "postrouting",
-                    "{", "type", "nat", "hook", "postrouting", "priority", "srcnat", ";", "}",
+                    "add",
+                    "chain",
+                    "ip",
+                    "netpilot",
+                    "postrouting",
+                    "{",
+                    "type",
+                    "nat",
+                    "hook",
+                    "postrouting",
+                    "priority",
+                    "srcnat",
+                    ";",
+                    "}",
                 ],
             )
             .await;
@@ -109,8 +126,15 @@ impl Plumbing {
             .run_ok(
                 "nft",
                 &[
-                    "add", "rule", "ip", "netpilot", "postrouting",
-                    "ip", "saddr", subnet, "masquerade",
+                    "add",
+                    "rule",
+                    "ip",
+                    "netpilot",
+                    "postrouting",
+                    "ip",
+                    "saddr",
+                    subnet,
+                    "masquerade",
                 ],
             )
             .await
@@ -125,7 +149,10 @@ impl Plumbing {
         loss_pct: f32,
         rate_kbit: u32,
     ) -> Result<()> {
-        let _ = self.runner.run("tc", &["qdisc", "del", "dev", tap, "root"]).await;
+        let _ = self
+            .runner
+            .run("tc", &["qdisc", "del", "dev", tap, "root"])
+            .await;
         if delay_ms == 0 && jitter_ms == 0 && loss_pct == 0.0 && rate_kbit == 0 {
             return Ok(());
         }
@@ -161,7 +188,9 @@ mod tests {
         let p = Plumbing::new(rec.clone());
 
         p.ensure_bridge("npb-abc").await.unwrap();
-        p.create_tap("npt-x1", "npb-abc", Some("labd")).await.unwrap();
+        p.create_tap("npt-x1", "npb-abc", Some("labd"))
+            .await
+            .unwrap();
         p.enable_nat("npn-mgmt", "10.99.0.1/24", "10.99.0.0/24")
             .await
             .unwrap();

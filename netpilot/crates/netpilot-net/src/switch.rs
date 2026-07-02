@@ -261,12 +261,7 @@ impl UdpSwitch {
     }
 
     /// Join a NIC to a multipoint segment (bridge/hub network).
-    pub fn join_segment(
-        &self,
-        network: Uuid,
-        port: PortId,
-        link: Option<(Uuid, WireImpairment)>,
-    ) {
+    pub fn join_segment(&self, network: Uuid, port: PortId, link: Option<(Uuid, WireImpairment)>) {
         let mut t = self.inner.tables.write().unwrap();
         let link_id = link.map(|(id, imp)| {
             t.links.insert(id, Arc::new(LinkState::new(imp)));
@@ -449,7 +444,8 @@ async fn deliver(frame: &[u8], dst: Arc<PortState>, link: Option<Arc<LinkState>>
                 } else {
                     0.0
                 };
-                delay = Duration::from_micros((imp.delay_ms as f64 * 1000.0 + jitter * 1000.0) as u64);
+                delay =
+                    Duration::from_micros((imp.delay_ms as f64 * 1000.0 + jitter * 1000.0) as u64);
             }
         }
     }
@@ -689,7 +685,8 @@ mod tests {
         let nc = fake_nic(wc).await;
 
         let l1 = Uuid::new_v4();
-        sw.connect_p2p(l1, pa, pb, WireImpairment::default()).unwrap();
+        sw.connect_p2p(l1, pa, pb, WireImpairment::default())
+            .unwrap();
         // rewire A to C while "running"
         sw.disconnect_link(l1);
         sw.connect_p2p(Uuid::new_v4(), pa, pc, WireImpairment::default())
