@@ -200,6 +200,57 @@ func TestAIChatOffline(t *testing.T) {
 	}
 }
 
+func TestUpdateLabYAML(t *testing.T) {
+	srv, _ := newTestServer(true)
+	defer srv.Close()
+
+	body, _ := json.Marshal(createLabRequest{Name: "y1"})
+	_, _ = http.Post(srv.URL+"/api/labs", "application/json", bytes.NewReader(body))
+
+	// valid YAML update
+	yaml := `name: ignored
+topology:
+  nodes:
+    x: {kind: linux, image: alpine}
+    y: {kind: linux, image: alpine}
+  links:
+    - endpoints: ["x:eth1", "y:eth1"]
+`
+	resp, err := http.Post(srv.URL+"/api/labs/y1/yaml", "application/x-yaml", bytes.NewReader([]byte(yaml)))
+	if err != nil {
+		t.Fatalf("update yaml: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("update yaml status: %d", resp.StatusCode)
+	}
+
+	var g model.Graph
+	_ = json.NewDecoder(resp.Body).Decode(&g)
+
+	// name comes from the path, not the body
+	if g.Name != "y1" || len(g.Nodes) != 2 || len(g.Links) != 1 {
+		t.Fatalf("unexpected graph after yaml update: %+v", g)
+	}
+
+	for _, n := range g.Nodes {
+		if n.Position.X == 0 && n.Position.Y == 0 {
+			t.Errorf("node %s missing auto-layout position", n.Name)
+		}
+	}
+
+	// invalid YAML => 400
+	resp, err = http.Post(srv.URL+"/api/labs/y1/yaml", "application/x-yaml",
+		bytes.NewReader([]byte(":\n  bad: [unterminated")))
+	if err != nil {
+		t.Fatalf("invalid yaml: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid yaml, got %d", resp.StatusCode)
+	}
+}
+
 func TestImportLab(t *testing.T) {
 	srv, _ := newTestServer(true)
 	defer srv.Close()

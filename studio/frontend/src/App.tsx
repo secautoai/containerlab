@@ -9,6 +9,7 @@ import ConsolePanel from "./components/ConsolePanel";
 import CopilotPanel from "./components/CopilotPanel";
 import ValidationModal from "./components/ValidationModal";
 import LintModal from "./components/LintModal";
+import YamlEditorModal from "./components/YamlEditorModal";
 import Toasts from "./components/Toasts";
 
 export default function App() {
@@ -50,6 +51,7 @@ export default function App() {
 
       <ValidationModal />
       <LintModal />
+      <YamlEditorModal />
       <Toasts />
     </div>
   );

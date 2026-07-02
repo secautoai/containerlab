@@ -6,6 +6,7 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/srl-labs/containerlab/studio/ai"
@@ -289,6 +290,38 @@ func (h *Handler) getLabYAML(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+".clab.yml"))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+// updateLabYAML replaces a lab's topology from a raw containerlab YAML body,
+// preserving the lab name and applying auto-layout for any new nodes.
+func (h *Handler) updateLabYAML(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	defer r.Body.Close()
+
+	data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MiB cap
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	g, err := model.ClabYAMLToGraph(data)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	// The URL path is authoritative for the lab name.
+	g.Name = name
+
+	model.AutoLayout(g)
+
+	if err := h.Engine.SaveLab(r.Context(), g); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, g)
 }
 
 func (h *Handler) labStatus(w http.ResponseWriter, r *http.Request) {

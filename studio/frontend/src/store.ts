@@ -35,6 +35,7 @@ interface StudioState {
   toasts: Toast[];
   consoleNode?: string;
   copilotOpen: boolean;
+  yamlEditorOpen: boolean;
   validation?: ValidationReport;
   validating: boolean;
   lint?: LintResult;
@@ -71,6 +72,8 @@ interface StudioState {
   renameLab: (name: string, newName: string) => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
+  toggleYamlEditor: (open?: boolean) => void;
+  applyYaml: (yaml: string) => Promise<void>;
   toggleTheme: () => void;
   toast: (kind: Toast["kind"], message: string) => void;
   dismissToast: (id: number) => void;
@@ -122,6 +125,7 @@ export const useStore = create<StudioState>((set, get) => ({
   theme: getInitialTheme(),
   toasts: [],
   copilotOpen: false,
+  yamlEditorOpen: false,
   validating: false,
   lint: undefined,
 
@@ -456,6 +460,18 @@ export const useStore = create<StudioState>((set, get) => ({
 
   openConsole: (node) => set({ consoleNode: node }),
   toggleCopilot: (open) => set((s) => ({ copilotOpen: open ?? !s.copilotOpen })),
+  toggleYamlEditor: (open) => set((s) => ({ yamlEditorOpen: open ?? !s.yamlEditorOpen })),
+
+  applyYaml: async (yaml) => {
+    const g = get().graph;
+    if (!g) return;
+    // Let the modal surface parse errors by rethrowing.
+    const updated = await api.updateYaml(g.name, yaml);
+    if (updated.nodes == null) updated.nodes = [];
+    if (updated.links == null) updated.links = [];
+    set({ graph: updated, dirty: false, selectedNode: undefined });
+    get().toast("success", "Applied YAML");
+  },
 
   toggleTheme: () => {
     const theme = get().theme === "dark" ? "light" : "dark";

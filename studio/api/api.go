@@ -43,6 +43,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/labs/{name}", h.saveLab)
 	mux.HandleFunc("DELETE /api/labs/{name}", h.deleteLab)
 	mux.HandleFunc("GET /api/labs/{name}/yaml", h.getLabYAML)
+	mux.HandleFunc("POST /api/labs/{name}/yaml", h.updateLabYAML)
 	mux.HandleFunc("GET /api/labs/{name}/status", h.labStatus)
 	mux.HandleFunc("POST /api/labs/{name}/deploy", h.deployLab)
 	mux.HandleFunc("POST /api/labs/{name}/destroy", h.destroyLab)

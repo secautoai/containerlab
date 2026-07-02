@@ -102,6 +102,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Validation    | End-to-end reachability (ping matrix) with a pass/fail report             |
 | Node ops      | Per-node start / stop / restart                                            |
 | Impairments   | Per-interface netem: delay, jitter, loss, rate, corruption                 |
+| YAML editor   | View/edit the raw `*.clab.yml` in-app and apply to the canvas               |
 | Auto-config   | Assign IP addressing (/30 links, /32 loopbacks) + OSPF/BGP for FRR/Linux   |
 | Copilot       | Plain-English → topology proposal → apply → auto-config → deploy          |
 
@@ -124,6 +125,7 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | `POST /api/labs/{name}/clone`                   | Clone a lab                     |
 | `POST /api/labs/{name}/rename`                  | Rename a lab                    |
 | `GET /api/labs/{name}/yaml`                     | Download the topology YAML     |
+| `POST /api/labs/{name}/yaml`                    | Replace topology from raw YAML  |
 | `GET /api/labs/{name}/status`                   | Runtime status                 |
 | `POST /api/labs/{name}/deploy` \| `/destroy`    | Lifecycle                      |
 | `POST /api/lint`                                | Pre-flight topology check      |

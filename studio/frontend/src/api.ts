@@ -180,6 +180,29 @@ export const api = {
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/clone`, { name: newName }),
   renameLab: (name: string, newName: string) =>
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/rename`, { name: newName }),
+  getYamlText: async (name: string): Promise<string> => {
+    const res = await fetch(`/api/labs/${encodeURIComponent(name)}/yaml`);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.text();
+  },
+  updateYaml: async (name: string, yaml: string): Promise<Graph> => {
+    const res = await fetch(`/api/labs/${encodeURIComponent(name)}/yaml`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-yaml" },
+      body: yaml,
+    });
+    if (!res.ok) {
+      let m = `${res.status} ${res.statusText}`;
+      try {
+        const d = await res.json();
+        if (d && d.error) m = d.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(m);
+    }
+    return res.json();
+  },
 };
 
 export interface LintIssue {

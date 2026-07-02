@@ -14,6 +14,7 @@ import {
   Network,
   Archive,
   ClipboardCheck,
+  Code2,
 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "../store";
@@ -37,6 +38,7 @@ export default function TopBar() {
   const [cfgOpen, setCfgOpen] = useState(false);
   const toggleTheme = useStore((s) => s.toggleTheme);
   const toggleCopilot = useStore((s) => s.toggleCopilot);
+  const toggleYamlEditor = useStore((s) => s.toggleYamlEditor);
 
   const deployed = !!status?.deployed;
 
@@ -74,13 +76,22 @@ export default function TopBar() {
         >
           <Save size={15} /> Save
         </button>
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph}
+          onClick={() => toggleYamlEditor(true)}
+          title="Edit topology YAML"
+        >
+          <Code2 size={15} /> YAML
+        </button>
         <a
           className={`${btn} border border-slate-300 dark:border-slate-700 ${
             graph ? "" : "pointer-events-none opacity-40"
           }`}
           href={graph ? api.yamlURL(graph.name) : "#"}
+          title="Download YAML"
         >
-          <Download size={15} /> YAML
+          <Download size={15} />
         </a>
         <button
           className={`${btn} border border-slate-300 dark:border-slate-700`}
