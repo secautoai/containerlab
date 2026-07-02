@@ -60,6 +60,13 @@ interface StudioState {
 
 let toastSeq = 1;
 
+// getInitialTheme reads the persisted theme, guarding against non-browser
+// environments (e.g. unit tests) where localStorage is unavailable.
+function getInitialTheme(): "dark" | "light" {
+  if (typeof localStorage === "undefined") return "dark";
+  return (localStorage.getItem("clabstudio-theme") as "dark" | "light") || "dark";
+}
+
 // nextInterface returns the next free data-plane interface name for a node,
 // using its kind interface pattern (e.g. eth{n}, e1-{n}).
 function nextInterface(g: Graph, nodeName: string, catalog: KindInfo[]): string {
@@ -94,7 +101,7 @@ export const useStore = create<StudioState>((set, get) => ({
   catalog: [],
   labs: [],
   dirty: false,
-  theme: (localStorage.getItem("clabstudio-theme") as "dark" | "light") || "dark",
+  theme: getInitialTheme(),
   toasts: [],
   copilotOpen: false,
 

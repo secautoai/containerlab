@@ -11,12 +11,17 @@ import Toasts from "./components/Toasts";
 
 export default function App() {
   const init = useStore((s) => s.init);
+  const openLab = useStore((s) => s.openLab);
   const graph = useStore((s) => s.graph);
   const caps = useStore((s) => s.capabilities);
 
   useEffect(() => {
-    init();
-  }, [init]);
+    init().then(() => {
+      // Support deep-linking to a lab via ?lab=<name>.
+      const lab = new URLSearchParams(window.location.search).get("lab");
+      if (lab) openLab(lab);
+    });
+  }, [init, openLab]);
 
   return (
     <div className="flex h-full flex-col">
