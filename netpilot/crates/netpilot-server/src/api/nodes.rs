@@ -305,6 +305,64 @@ pub async fn set_config(
     Ok(Json(serde_json::json!({ "saved": node_id })))
 }
 
+/// Export the running configuration off a live node's serial console into
+/// its startup config (EVE-NG "export config"). Uses the template's
+/// `export_command`.
+pub async fn export_config(
+    State(state): State<AppState>,
+    Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let lab = state.store.load(lab_id)?;
+    let node = lab.node(node_id)?.clone();
+    let templates = state.templates.read().await;
+    let command = templates
+        .get(&node.template)
+        .ok()
+        .and_then(|t| t.export_command.clone())
+        .ok_or_else(|| {
+            ApiError::bad_request(format!(
+                "template '{}' has no config export command",
+                node.template
+            ))
+        })?;
+    drop(templates);
+
+    let sock = state
+        .supervisor
+        .console_socket(lab_id, node_id)
+        .await
+        .map_err(|_| ApiError::conflict("node is not running"))?;
+    let raw = crate::agent::run_console_command(&sock, &command, 30).await?;
+
+    // Strip the echoed command line and trailing prompt.
+    let mut lines: Vec<&str> = raw.lines().collect();
+    if lines.first().is_some_and(|l| l.contains(&command)) {
+        lines.remove(0);
+    }
+    while lines
+        .last()
+        .is_some_and(|l| l.trim().is_empty() || l.trim_start().starts_with(&node.name))
+    {
+        lines.pop();
+    }
+    let config = lines.join("\n");
+    if config.trim().is_empty() {
+        return Err(ApiError::conflict(
+            "no output captured — is the console at a CLI prompt?",
+        ));
+    }
+
+    state
+        .mutate_lab(lab_id, |lab| {
+            lab.node_mut(node_id)?.startup_config = Some(config.clone());
+            Ok(())
+        })
+        .await?;
+    Ok(Json(
+        serde_json::json!({ "exported": node.name, "config": config }),
+    ))
+}
+
 #[derive(Serialize)]
 pub struct InterfaceView {
     pub index: u32,

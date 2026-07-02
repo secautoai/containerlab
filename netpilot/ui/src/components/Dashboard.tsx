@@ -129,8 +129,23 @@ export default function Dashboard() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {labs.map((lab) => (
+          Object.entries(
+            labs.reduce<Record<string, LabSummary[]>>((acc, lab) => {
+              const key = lab.folder && lab.folder !== '/' ? lab.folder : ''
+              ;(acc[key] ??= []).push(lab)
+              return acc
+            }, {}),
+          )
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([folder, group]) => (
+              <section key={folder || '(root)'} className="mb-8">
+                {folder && (
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-500">
+                    📁 {folder}
+                  </h3>
+                )}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.map((lab) => (
               <div
                 key={lab.id}
                 onClick={() => void openLab(lab.id)}
@@ -174,8 +189,10 @@ export default function Dashboard() {
                   <span>updated {new Date(lab.modified_at).toLocaleString()}</span>
                 </div>
               </div>
-            ))}
-          </div>
+                  ))}
+                </div>
+              </section>
+            ))
         )}
       </main>
 

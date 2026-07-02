@@ -165,6 +165,7 @@ pub async fn create_link(
 pub struct UpdateLink {
     pub label: Option<String>,
     pub impairment: Option<Impairment>,
+    pub suspended: Option<bool>,
 }
 
 pub async fn update_link(
@@ -182,6 +183,9 @@ pub async fn update_link(
                 link.label = req.label;
             }
             link.impairment = req.impairment;
+            if let Some(s) = req.suspended {
+                link.suspended = s;
+            }
             Ok(link.clone())
         })
         .await?;
@@ -197,6 +201,7 @@ pub async fn update_link(
         })
         .unwrap_or_default();
     switch.set_impairment(link_id, imp);
+    switch.set_link_suspended(link_id, link.suspended);
     state.events.publish(netpilot_core::Event::LinkUpdated {
         lab: lab_id,
         link: link_id,

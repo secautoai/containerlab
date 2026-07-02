@@ -57,6 +57,7 @@ export interface Link {
   b: Endpoint
   label?: string
   impairment?: Impairment
+  suspended?: boolean
 }
 
 export interface Annotation {
@@ -213,8 +214,16 @@ export const api = {
 
   createLink: (lab: string, body: { a: Endpoint; b: Endpoint }) =>
     request<Link>('POST', `/api/labs/${lab}/links`, body),
-  updateLink: (lab: string, link: string, body: { label?: string; impairment?: Impairment | null }) =>
-    request<Link>('PUT', `/api/labs/${lab}/links/${link}`, body),
+  updateLink: (
+    lab: string,
+    link: string,
+    body: { label?: string; impairment?: Impairment | null; suspended?: boolean },
+  ) => request<Link>('PUT', `/api/labs/${lab}/links/${link}`, body),
+  exportConfig: (lab: string, node: string) =>
+    request<{ exported: string; config: string }>(
+      'POST',
+      `/api/labs/${lab}/nodes/${node}/config/export`,
+    ),
   deleteLink: (lab: string, link: string) =>
     request<unknown>('DELETE', `/api/labs/${lab}/links/${link}`),
 

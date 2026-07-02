@@ -247,6 +247,7 @@ impl AppState {
             }
             _ => {}
         }
+        switch.set_link_suspended(link.id, link.suspended);
     }
 
     /// Apply a single link live (hot connect) if endpoints are up.

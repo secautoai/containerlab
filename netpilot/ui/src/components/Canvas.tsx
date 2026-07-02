@@ -147,7 +147,9 @@ function LabelledEdge(props: EdgeProps) {
     targetPosition,
     curvature: 0.2,
   })
-  const data = props.data as { aLabel?: string; bLabel?: string; impaired?: boolean } | undefined
+  const data = props.data as
+    | { aLabel?: string; bLabel?: string; impaired?: boolean; suspended?: boolean }
+    | undefined
   const lerp = (t: number) => ({
     x: sourceX + (targetX - sourceX) * t,
     y: sourceY + (targetY - sourceY) * t,
@@ -160,9 +162,16 @@ function LabelledEdge(props: EdgeProps) {
         {...props}
         path={path}
         style={{
-          stroke: props.selected ? '#22d3ee' : data?.impaired ? '#f59e0b' : '#475569',
+          stroke: props.selected
+            ? '#22d3ee'
+            : data?.suspended
+              ? '#ef4444'
+              : data?.impaired
+                ? '#f59e0b'
+                : '#475569',
           strokeWidth: props.selected ? 2 : 1.5,
-          strokeDasharray: data?.impaired ? '6 3' : undefined,
+          strokeDasharray: data?.suspended ? '3 4' : data?.impaired ? '6 3' : undefined,
+          opacity: data?.suspended ? 0.6 : 1,
         }}
       />
       <EdgeLabelRenderer>
@@ -250,6 +259,7 @@ function buildGraph(
       data: {
         aLabel: label(l.a),
         bLabel: label(l.b),
+        suspended: !!l.suspended,
         impaired:
           !!l.impairment &&
           (l.impairment.delay_ms > 0 ||

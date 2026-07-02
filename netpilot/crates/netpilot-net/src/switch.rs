@@ -64,6 +64,9 @@ struct Bucket {
 #[derive(Debug)]
 struct LinkState {
     impairment: WireImpairment,
+    /// Suspended links drop every frame (admin-down without touching
+    /// guest interface state) — EVE-NG Pro "suspend link".
+    suspended: AtomicBool,
     bucket: Mutex<Bucket>,
 }
 
@@ -71,6 +74,7 @@ impl LinkState {
     fn new(impairment: WireImpairment) -> Self {
         Self {
             impairment,
+            suspended: AtomicBool::new(false),
             bucket: Mutex::new(Bucket {
                 tokens: 0.0,
                 last: Instant::now(),
@@ -303,10 +307,25 @@ impl UdpSwitch {
         }
     }
 
-    /// Update impairment on a live link.
+    /// Update impairment on a live link (preserves suspension state).
     pub fn set_impairment(&self, link: Uuid, impairment: WireImpairment) {
         let mut t = self.inner.tables.write().unwrap();
-        t.links.insert(link, Arc::new(LinkState::new(impairment)));
+        let suspended = t
+            .links
+            .get(&link)
+            .map(|l| l.suspended.load(Ordering::Relaxed))
+            .unwrap_or(false);
+        let state = LinkState::new(impairment);
+        state.suspended.store(suspended, Ordering::Relaxed);
+        t.links.insert(link, Arc::new(state));
+    }
+
+    /// Suspend/resume a link: while suspended every frame is dropped.
+    pub fn set_link_suspended(&self, link: Uuid, suspended: bool) {
+        let t = self.inner.tables.read().unwrap();
+        if let Some(l) = t.links.get(&link) {
+            l.suspended.store(suspended, Ordering::Relaxed);
+        }
     }
 
     /// Set carrier state on a port (drops frames both directions when down).
@@ -430,6 +449,9 @@ async fn deliver(frame: &[u8], dst: Arc<PortState>, link: Option<Arc<LinkState>>
 
     let mut delay = Duration::ZERO;
     if let Some(ls) = &link {
+        if ls.suspended.load(Ordering::Relaxed) {
+            return;
+        }
         let imp = ls.impairment;
         if !imp.is_noop() {
             if imp.loss_pct > 0.0 && rand::random::<f32>() * 100.0 < imp.loss_pct {
@@ -640,6 +662,60 @@ mod tests {
             .expect("frame should arrive after carrier up")
             .unwrap();
         assert_eq!(&buf[..n], b"up-again");
+    }
+
+    #[tokio::test]
+    async fn suspend_and_resume() {
+        let sw = UdpSwitch::new(47000);
+        let (pa, pb) = (pid(0), pid(0));
+        let wa = sw.attach(pa).await.unwrap();
+        let wb = sw.attach(pb).await.unwrap();
+        let na = fake_nic(wa).await;
+        let nb = fake_nic(wb).await;
+        let link = Uuid::new_v4();
+        sw.connect_p2p(link, pa, pb, WireImpairment::default())
+            .unwrap();
+
+        sw.set_link_suspended(link, true);
+        na.send_to(b"dropped", (Ipv4Addr::LOCALHOST, wa.switch_port))
+            .await
+            .unwrap();
+        let mut buf = [0u8; 64];
+        assert!(
+            tokio::time::timeout(Duration::from_millis(300), nb.recv_from(&mut buf))
+                .await
+                .is_err(),
+            "suspended link must drop"
+        );
+
+        sw.set_link_suspended(link, false);
+        na.send_to(b"resumed", (Ipv4Addr::LOCALHOST, wa.switch_port))
+            .await
+            .unwrap();
+        let (n, _) = tokio::time::timeout(Duration::from_secs(2), nb.recv_from(&mut buf))
+            .await
+            .expect("resumed link must forward")
+            .unwrap();
+        assert_eq!(&buf[..n], b"resumed");
+
+        // updating impairment must not clear suspension
+        sw.set_link_suspended(link, true);
+        sw.set_impairment(
+            link,
+            WireImpairment {
+                delay_ms: 1,
+                ..Default::default()
+            },
+        );
+        na.send_to(b"still-down", (Ipv4Addr::LOCALHOST, wa.switch_port))
+            .await
+            .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(300), nb.recv_from(&mut buf))
+                .await
+                .is_err(),
+            "suspension must survive impairment updates"
+        );
     }
 
     #[tokio::test]

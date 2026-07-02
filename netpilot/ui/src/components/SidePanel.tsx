@@ -216,15 +216,34 @@ function NodeProps({ lab, nodeId }: { lab: LabView; nodeId: string }) {
               template?.qemu && template.notes ? `# ${template.notes}` : '! startup configuration'
             }
           />
-          <button
-            onClick={async () => {
-              await api.setNodeConfig(lab.id, nodeId, config ?? '')
-              pushLog('info', `${node.name}: startup config saved (applies after wipe+start)`)
-            }}
-            className="mt-1 w-full rounded-md bg-ink-700 py-1 text-xs text-white hover:bg-ink-600"
-          >
-            Save config
-          </button>
+          <div className="mt-1 flex gap-1">
+            <button
+              onClick={async () => {
+                await api.setNodeConfig(lab.id, nodeId, config ?? '')
+                pushLog('info', `${node.name}: startup config saved (applies after wipe+start)`)
+              }}
+              className="flex-1 rounded-md bg-ink-700 py-1 text-xs text-white hover:bg-ink-600"
+            >
+              Save config
+            </button>
+            <button
+              title="Pull the running configuration off the node's console"
+              disabled={!running}
+              onClick={async () => {
+                try {
+                  pushLog('info', `${node.name}: exporting running config…`)
+                  const r = await api.exportConfig(lab.id, nodeId)
+                  setConfig(r.config)
+                  pushLog('info', `${node.name}: running config exported to startup config`)
+                } catch (e) {
+                  pushLog('error', `export: ${e instanceof Error ? e.message : e}`)
+                }
+              }}
+              className="flex-1 rounded-md bg-ink-700 py-1 text-xs text-white hover:bg-ink-600 disabled:opacity-40"
+            >
+              Export from device
+            </button>
+          </div>
         </div>
       )}
 
@@ -392,6 +411,19 @@ function LinkProps({ lab, linkId }: { lab: LabView; linkId: string }) {
         className="w-full rounded-md border border-ink-700 py-1 text-xs text-ink-300 hover:text-white"
       >
         Clear impairment
+      </button>
+      <button
+        onClick={async () => {
+          await api.updateLink(lab.id, linkId, { suspended: !link.suspended })
+          await refreshLab()
+        }}
+        className={`w-full rounded-md py-1.5 text-sm ${
+          link.suspended
+            ? 'bg-emerald-800/60 text-emerald-200 hover:bg-emerald-700'
+            : 'bg-amber-900/50 text-amber-200 hover:bg-amber-800'
+        }`}
+      >
+        {link.suspended ? 'Resume link' : 'Suspend link (admin down)'}
       </button>
       <button
         onClick={async () => {

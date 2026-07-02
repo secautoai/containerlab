@@ -341,6 +341,9 @@ pub struct Link {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub impairment: Option<Impairment>,
+    /// Admin-down: frames are dropped while true (guest keeps carrier).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub suspended: bool,
 }
 
 impl Link {
@@ -351,6 +354,7 @@ impl Link {
             b,
             label: None,
             impairment: None,
+            suspended: false,
         }
     }
 

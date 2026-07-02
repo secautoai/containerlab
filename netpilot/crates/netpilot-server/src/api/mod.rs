@@ -47,6 +47,10 @@ pub fn router(state: AppState) -> Router {
             get(nodes::get_config).put(nodes::set_config),
         )
         .route(
+            "/api/labs/{lab}/nodes/{node}/config/export",
+            post(nodes::export_config),
+        )
+        .route(
             "/api/labs/{lab}/nodes/{node}/interfaces",
             get(nodes::interfaces),
         )

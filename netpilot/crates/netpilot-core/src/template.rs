@@ -138,6 +138,11 @@ pub struct NodeTemplate {
     /// Free-form notes shown in the UI (image requirements, credentials...).
     #[serde(default)]
     pub notes: String,
+    /// CLI command that prints the full running configuration on the
+    /// serial console (used by "export running config"). None = platform
+    /// has no meaningful config dump.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub export_command: Option<String>,
 }
 
 fn default_max_ifaces() -> u32 {
@@ -145,6 +150,19 @@ fn default_max_ifaces() -> u32 {
 }
 fn default_iface_pattern() -> String {
     "eth{i}".into()
+}
+
+/// Per-platform "print the running config" command for config export.
+fn export_command_for(template_id: &str) -> Option<String> {
+    let cmd = match template_id {
+        "iosv" | "iosvl2" | "csr1000v" | "cat8000v" | "xrv9k" | "veos" => "show running-config",
+        "vyos" | "frr" => "show configuration commands",
+        "vsrx" | "vjunos-switch" => "show configuration | display set | no-more",
+        "fortigate" => "show full-configuration",
+        "chr" => "/export",
+        _ => return None,
+    };
+    Some(cmd.into())
 }
 
 /// The built-in template catalog. Users can add more via YAML files in the
@@ -172,6 +190,7 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
         console: ConsoleKind::Serial,
         qemu,
         notes: notes.into(),
+        export_command: export_command_for(id),
     };
 
     vec![
