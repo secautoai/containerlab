@@ -118,6 +118,7 @@ pub async fn create(
                 x: req.x.unwrap_or(200.0),
                 y: req.y.unwrap_or(200.0),
                 startup_config: req.startup_config,
+                config_sets: BTreeMap::new(),
                 boot_delay_s: 0,
                 overrides: BTreeMap::new(),
             };
@@ -270,15 +271,25 @@ pub async fn wipe(
     Ok(Json(serde_json::json!({ "wiped": node_id })))
 }
 
+#[derive(Deserialize, Default)]
+pub struct ConfigQuery {
+    /// Named config set; omitted = the node's default startup config.
+    #[serde(default)]
+    pub set: Option<String>,
+}
+
 pub async fn get_config(
     State(state): State<AppState>,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+    axum::extract::Query(q): axum::extract::Query<ConfigQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let lab = state.store.load(lab_id)?;
     let node = lab.node(node_id)?;
-    Ok(Json(
-        serde_json::json!({ "config": node.startup_config.clone().unwrap_or_default() }),
-    ))
+    let config = match q.set.as_deref().filter(|s| !s.is_empty()) {
+        Some(set) => node.config_sets.get(set).cloned().unwrap_or_default(),
+        None => node.startup_config.clone().unwrap_or_default(),
+    };
+    Ok(Json(serde_json::json!({ "config": config })))
 }
 
 #[derive(Deserialize)]
@@ -289,16 +300,28 @@ pub struct SetConfig {
 pub async fn set_config(
     State(state): State<AppState>,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+    axum::extract::Query(q): axum::extract::Query<ConfigQuery>,
     Json(req): Json<SetConfig>,
 ) -> ApiResult<Json<serde_json::Value>> {
     state
         .mutate_lab(lab_id, |lab| {
             let node = lab.node_mut(node_id)?;
-            node.startup_config = if req.config.is_empty() {
-                None
-            } else {
-                Some(req.config)
-            };
+            match q.set.as_deref().filter(|s| !s.is_empty()) {
+                Some(set) => {
+                    if req.config.is_empty() {
+                        node.config_sets.remove(set);
+                    } else {
+                        node.config_sets.insert(set.to_string(), req.config);
+                    }
+                }
+                None => {
+                    node.startup_config = if req.config.is_empty() {
+                        None
+                    } else {
+                        Some(req.config)
+                    };
+                }
+            }
             Ok(())
         })
         .await?;

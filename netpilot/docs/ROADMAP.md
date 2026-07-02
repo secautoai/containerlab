@@ -109,7 +109,7 @@ Legend: [x] done · [~] partial · [ ] planned
 | IOL / dynamips backends | Out of scope (licensing; QEMU covers modern images) |
 | Docker nodes (Pro) | Phase 8 |
 | Folders, lab files, lock | Folders ✅, lock ✅ |
-| Startup configs + config sets | Configs ✅; sets planned |
+| Startup configs + config sets | Configs ✅; named sets + active-set boot ✅ |
 | Multi-user pods, RBAC (Pro) | Phase 4 planned |
 | Telnet/VNC/HTML5 consoles | Serial→WS ✅, VNC embed planned |
 | Cloud/pnet, NAT networks (Pro) | Phase 3 ✅ (privileged mode) |

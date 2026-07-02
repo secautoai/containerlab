@@ -129,6 +129,91 @@ pub async fn clone_lab(
     Ok(Json(copy))
 }
 
+/// Config sets: names in use across the lab plus the active one.
+#[derive(Serialize)]
+pub struct ConfigSetsView {
+    pub active: String,
+    pub sets: Vec<String>,
+}
+
+pub async fn config_sets(
+    State(state): State<AppState>,
+    Path(lab_id): Path<Uuid>,
+) -> ApiResult<Json<ConfigSetsView>> {
+    let lab = state.store.load(lab_id)?;
+    let mut sets: Vec<String> = lab
+        .nodes
+        .values()
+        .flat_map(|n| n.config_sets.keys().cloned())
+        .collect();
+    sets.sort();
+    sets.dedup();
+    Ok(Json(ConfigSetsView {
+        active: lab.active_config_set.clone(),
+        sets,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct ActivateSet {
+    /// Set name; empty string returns to each node's default config.
+    pub name: String,
+}
+
+pub async fn activate_config_set(
+    State(state): State<AppState>,
+    Path(lab_id): Path<Uuid>,
+    Json(req): Json<ActivateSet>,
+) -> ApiResult<Json<ConfigSetsView>> {
+    state
+        .mutate_lab(lab_id, |lab| {
+            lab.active_config_set = req.name;
+            Ok(())
+        })
+        .await?;
+    config_sets(State(state), Path(lab_id)).await
+}
+
+/// Snapshot every node's *current default* startup config into a named set.
+pub async fn snapshot_config_set(
+    State(state): State<AppState>,
+    Path((lab_id, name)): Path<(Uuid, String)>,
+) -> ApiResult<Json<ConfigSetsView>> {
+    if name.trim().is_empty() {
+        return Err(ApiError::bad_request("set name must not be empty"));
+    }
+    let name = name.trim().to_string();
+    state
+        .mutate_lab(lab_id, |lab| {
+            for node in lab.nodes.values_mut() {
+                if let Some(cfg) = node.startup_config.clone() {
+                    node.config_sets.insert(name.clone(), cfg);
+                }
+            }
+            Ok(())
+        })
+        .await?;
+    config_sets(State(state), Path(lab_id)).await
+}
+
+pub async fn delete_config_set(
+    State(state): State<AppState>,
+    Path((lab_id, name)): Path<(Uuid, String)>,
+) -> ApiResult<Json<ConfigSetsView>> {
+    state
+        .mutate_lab(lab_id, |lab| {
+            for node in lab.nodes.values_mut() {
+                node.config_sets.remove(&name);
+            }
+            if lab.active_config_set == name {
+                lab.active_config_set.clear();
+            }
+            Ok(())
+        })
+        .await?;
+    config_sets(State(state), Path(lab_id)).await
+}
+
 #[derive(Deserialize)]
 pub struct SetLock {
     pub locked: bool,

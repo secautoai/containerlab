@@ -26,6 +26,10 @@ pub struct Lab {
     /// Locked labs reject topology/config edits (lifecycle still allowed).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub locked: bool,
+    /// Active configuration set name; empty = each node's default
+    /// `startup_config` (EVE-NG Pro "config sets").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub active_config_set: String,
     #[serde(default = "default_version")]
     pub version: u32,
     pub created_at: DateTime<Utc>,
@@ -59,6 +63,7 @@ impl Lab {
             folder: "/".into(),
             body: String::new(),
             locked: false,
+            active_config_set: String::new(),
             version: 1,
             created_at: now,
             modified_at: now,
@@ -238,6 +243,10 @@ pub struct Node {
     /// Optional startup configuration pushed on first boot.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup_config: Option<String>,
+    /// Named alternative configurations (lab's active_config_set picks one;
+    /// falls back to `startup_config` when absent).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub config_sets: BTreeMap<String, String>,
     /// Optional delay (seconds) before boot when starting the whole lab.
     #[serde(default)]
     pub boot_delay_s: u32,
@@ -251,6 +260,17 @@ impl Node {
     /// template naming scheme (e.g. Gi0/0, eth0, ge-0/0/0).
     pub fn iface_name(&self, pattern: &str, index: u32) -> String {
         iface_name_from_pattern(pattern, index)
+    }
+
+    /// The configuration this node boots with under the given active set
+    /// ("" = default): the set's config if present, else `startup_config`.
+    pub fn effective_config(&self, active_set: &str) -> Option<&str> {
+        if !active_set.is_empty() {
+            if let Some(c) = self.config_sets.get(active_set) {
+                return Some(c.as_str());
+            }
+        }
+        self.startup_config.as_deref()
     }
 }
 
@@ -442,6 +462,7 @@ mod tests {
             x: 0.0,
             y: 0.0,
             startup_config: None,
+            config_sets: BTreeMap::new(),
             boot_delay_s: 0,
             overrides: BTreeMap::new(),
         }
@@ -511,6 +532,20 @@ mod tests {
         assert_eq!(iface_name_from_pattern("Gi0/{i}", 2), "Gi0/2");
         assert_eq!(iface_name_from_pattern("ge-0/0/{i}", 3), "ge-0/0/3");
         assert_eq!(iface_name_from_pattern("Ethernet{i+1}", 0), "Ethernet1");
+    }
+
+    #[test]
+    fn effective_config_prefers_active_set() {
+        let mut n = test_node("r1");
+        n.startup_config = Some("default".into());
+        n.config_sets.insert("golden".into(), "golden-cfg".into());
+        assert_eq!(n.effective_config(""), Some("default"));
+        assert_eq!(n.effective_config("golden"), Some("golden-cfg"));
+        // unknown set falls back to default
+        assert_eq!(n.effective_config("nope"), Some("default"));
+        n.startup_config = None;
+        assert_eq!(n.effective_config(""), None);
+        assert_eq!(n.effective_config("golden"), Some("golden-cfg"));
     }
 
     #[test]

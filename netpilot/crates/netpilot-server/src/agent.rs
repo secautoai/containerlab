@@ -141,6 +141,7 @@ impl LabToolbox for StateToolbox {
                         .get("startup_config")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
+                    config_sets: BTreeMap::new(),
                     boot_delay_s: 0,
                     overrides: BTreeMap::new(),
                 };

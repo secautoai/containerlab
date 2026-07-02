@@ -1,6 +1,6 @@
 // Lab editor: toolbar + palette + canvas + side panel + console + agent.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
   BookOpen,
@@ -38,6 +38,16 @@ export default function LabEditor() {
   const [netMenu, setNetMenu] = useState(false)
   const [docsOpen, setDocsOpen] = useState(false)
   const [docsDraft, setDocsDraft] = useState<string | null>(null)
+  const [configSets, setConfigSets] = useState<{ active: string; sets: string[] }>({
+    active: '',
+    sets: [],
+  })
+
+  const labId = lab?.id
+  useEffect(() => {
+    if (!labId) return
+    api.configSets(labId).then(setConfigSets).catch(() => {})
+  }, [labId])
 
   if (!lab) {
     return (
@@ -123,6 +133,34 @@ export default function LabEditor() {
               <SquareIcon size={14} /> Stop lab
             </button>
           )}
+
+          <select
+            title="Active configuration set (boot configs)"
+            value={configSets.active}
+            onChange={async (e) => {
+              if (e.target.value === '__snapshot__') {
+                const name = prompt('Snapshot current startup configs as set:')
+                if (name?.trim()) {
+                  const v = await api.snapshotConfigSet(lab.id, name.trim())
+                  setConfigSets(v)
+                  pushLog('info', `config set '${name.trim()}' saved`)
+                }
+                return
+              }
+              const v = await api.activateConfigSet(lab.id, e.target.value)
+              setConfigSets(v)
+              pushLog('info', v.active ? `booting from config set '${v.active}'` : 'booting from default configs')
+            }}
+            className="rounded-md border border-ink-700 bg-ink-900 px-2 py-1.5 text-xs text-ink-300 outline-none hover:border-ink-600"
+          >
+            <option value="">configs: default</option>
+            {configSets.sets.map((s) => (
+              <option key={s} value={s}>
+                configs: {s}
+              </option>
+            ))}
+            <option value="__snapshot__">+ snapshot as set…</option>
+          </select>
 
           <div className="relative">
             <button

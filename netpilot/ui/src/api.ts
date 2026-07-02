@@ -183,6 +183,15 @@ export const api = {
     request<Lab>('PUT', `/api/labs/${id}`, body),
   setLock: (id: string, locked: boolean) =>
     request<Lab>('PUT', `/api/labs/${id}/lock`, { locked }),
+  configSets: (id: string) =>
+    request<{ active: string; sets: string[] }>('GET', `/api/labs/${id}/config-sets`),
+  activateConfigSet: (id: string, name: string) =>
+    request<{ active: string; sets: string[] }>('PUT', `/api/labs/${id}/config-sets`, { name }),
+  snapshotConfigSet: (id: string, name: string) =>
+    request<{ active: string; sets: string[] }>(
+      'POST',
+      `/api/labs/${id}/config-sets/${encodeURIComponent(name)}`,
+    ),
   labStats: (id: string) =>
     request<{ node: string; rss_mb: number; cpu_seconds: number }[]>(
       'GET',

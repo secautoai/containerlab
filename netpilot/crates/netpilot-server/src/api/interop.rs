@@ -296,6 +296,7 @@ fn import_unl(xml: &str) -> ApiResult<Lab> {
                     .and_then(parse_px)
                     .unwrap_or(100.0 + (i as f64 / 6.0).floor() * 140.0),
                 startup_config: configs.get(&n.id).cloned(),
+                config_sets: BTreeMap::new(),
                 boot_delay_s: 0,
                 overrides: BTreeMap::new(),
             },
@@ -544,6 +545,7 @@ fn import_cml(yaml: &str) -> ApiResult<Lab> {
                 x: n.x.unwrap_or((i as f64 % 5.0) * 180.0) + off_x,
                 y: n.y.unwrap_or((i as f64 / 5.0).floor() * 150.0) + off_y,
                 startup_config: n.configuration.clone().filter(|c| !c.trim().is_empty()),
+                config_sets: BTreeMap::new(),
                 boot_delay_s: 0,
                 overrides: BTreeMap::new(),
             },
@@ -656,6 +658,7 @@ fn import_clab(yaml: &str) -> ApiResult<Lab> {
                 x: 120.0 + (i as f64 % 5.0) * 180.0,
                 y: 120.0 + (i as f64 / 5.0).floor() * 150.0,
                 startup_config: None,
+                config_sets: BTreeMap::new(),
                 boot_delay_s: 0,
                 overrides: BTreeMap::new(),
             },

@@ -264,6 +264,76 @@ async fn lab_locking() {
 }
 
 #[tokio::test]
+async fn config_sets_lifecycle() {
+    let (app, _dir) = test_app().await;
+    let (_, lab) = call(&app, "POST", "/api/labs", Some(json!({"name": "sets"}))).await;
+    let lab_id = lab["id"].as_str().unwrap().to_string();
+    let (_, node) = call(
+        &app,
+        "POST",
+        &format!("/api/labs/{lab_id}/nodes"),
+        Some(json!({"template": "vyos", "name": "R1", "startup_config": "hostname baseline"})),
+    )
+    .await;
+    let node_id = node["id"].as_str().unwrap();
+
+    // snapshot current configs into a set named "golden"
+    let (st, view) = call(
+        &app,
+        "POST",
+        &format!("/api/labs/{lab_id}/config-sets/golden"),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(view["sets"], json!(["golden"]));
+
+    // edit the golden copy independently of the default
+    call(
+        &app,
+        "PUT",
+        &format!("/api/labs/{lab_id}/nodes/{node_id}/config?set=golden"),
+        Some(json!({"config": "hostname golden"})),
+    )
+    .await;
+    let (_, def) = call(
+        &app,
+        "GET",
+        &format!("/api/labs/{lab_id}/nodes/{node_id}/config"),
+        None,
+    )
+    .await;
+    assert_eq!(def["config"], "hostname baseline");
+    let (_, gold) = call(
+        &app,
+        "GET",
+        &format!("/api/labs/{lab_id}/nodes/{node_id}/config?set=golden"),
+        None,
+    )
+    .await;
+    assert_eq!(gold["config"], "hostname golden");
+
+    // activate the set; deleting it clears activation
+    let (_, view) = call(
+        &app,
+        "PUT",
+        &format!("/api/labs/{lab_id}/config-sets"),
+        Some(json!({"name": "golden"})),
+    )
+    .await;
+    assert_eq!(view["active"], "golden");
+    let (_, view) = call(
+        &app,
+        "DELETE",
+        &format!("/api/labs/{lab_id}/config-sets/golden"),
+        None,
+    )
+    .await;
+    assert_eq!(view["active"], "");
+    assert_eq!(view["sets"], json!([]));
+}
+
+#[tokio::test]
 async fn import_export_roundtrip() {
     let (app, _dir) = test_app().await;
 

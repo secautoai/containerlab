@@ -190,7 +190,7 @@ impl AppState {
         let config_media = build_config_media(
             &template.qemu.config_delivery,
             &node.name,
-            node.startup_config.as_deref(),
+            node.effective_config(&lab.active_config_set),
             &node_dir,
         )?;
 

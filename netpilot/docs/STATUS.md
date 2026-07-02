@@ -70,6 +70,6 @@ exposing 10 tools to external agents.
 
 - Rootless mode cannot provide NAT/cloud host connectivity (use
   `--datapath bridge` for that).
-- Dual-VM platforms (vMX, vQFX), boot-state caching, config sets.
+- Dual-VM platforms (vMX, vQFX), boot-state caching.
 - Multi-user auth/RBAC, countdown timers, clustering.
 - Agent responses stream per content block, not per token.
