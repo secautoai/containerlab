@@ -62,6 +62,7 @@ interface StudioState {
   configureLab: (protocol: "none" | "ospf" | "bgp") => Promise<void>;
   importLab: (yaml: string, name?: string) => Promise<void>;
   saveConfigs: () => Promise<void>;
+  createFromTemplate: (templateId: string, name?: string) => Promise<void>;
   openConsole: (node?: string) => void;
   toggleCopilot: (open?: boolean) => void;
   toggleTheme: () => void;
@@ -387,6 +388,19 @@ export const useStore = create<StudioState>((set, get) => ({
       get().toast("success", "Running configs saved");
     } catch (e) {
       get().toast("error", `Save configs failed: ${(e as Error).message}`);
+    }
+  },
+
+  createFromTemplate: async (templateId, name) => {
+    try {
+      const g = await api.labFromTemplate(templateId, name);
+      if (g.nodes == null) g.nodes = [];
+      if (g.links == null) g.links = [];
+      set({ graph: g, dirty: false, selectedNode: undefined, status: undefined });
+      await get().refreshLabs();
+      get().toast("success", `Created "${g.name}" from template`);
+    } catch (e) {
+      get().toast("error", `Template failed: ${(e as Error).message}`);
     }
   },
 

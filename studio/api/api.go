@@ -33,6 +33,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/capabilities", h.capabilities)
 	mux.HandleFunc("GET /api/catalog", h.catalog)
+	mux.HandleFunc("GET /api/templates", h.templates)
+	mux.HandleFunc("POST /api/labs/from-template", h.labFromTemplate)
 
 	mux.HandleFunc("GET /api/labs", h.listLabs)
 	mux.HandleFunc("POST /api/labs", h.createLab)

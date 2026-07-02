@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Plus, Trash2, FolderOpen, CircleDot, Circle, Upload } from "lucide-react";
+import { Plus, Trash2, FolderOpen, CircleDot, Circle, Upload, LayoutTemplate } from "lucide-react";
 import { useStore } from "../store";
 import ImportModal from "./ImportModal";
+import TemplateModal from "./TemplateModal";
 
 export default function Sidebar() {
   const labs = useStore((s) => s.labs);
@@ -11,6 +12,7 @@ export default function Sidebar() {
   const deleteLab = useStore((s) => s.deleteLab);
   const [newName, setNewName] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const create = async () => {
     const name = newName.trim();
@@ -38,15 +40,24 @@ export default function Sidebar() {
             <Plus size={16} />
           </button>
         </div>
-        <button
-          onClick={() => setImportOpen(true)}
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-brand dark:border-slate-700"
-        >
-          <Upload size={14} /> Import topology
-        </button>
+        <div className="mt-2 flex gap-2">
+          <button
+            onClick={() => setTemplateOpen(true)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-brand dark:border-slate-700"
+          >
+            <LayoutTemplate size={14} /> Template
+          </button>
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs hover:border-brand dark:border-slate-700"
+          >
+            <Upload size={14} /> Import
+          </button>
+        </div>
       </div>
 
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
+      {templateOpen && <TemplateModal onClose={() => setTemplateOpen(false)} />}
 
       <div className="flex-1 overflow-y-auto p-2">
         <div className="px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">

@@ -33,6 +33,43 @@ func (h *Handler) catalog(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, model.Catalog())
 }
 
+func (h *Handler) templates(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, ai.Templates())
+}
+
+// fromTemplateRequest selects a template and target lab name.
+type fromTemplateRequest struct {
+	TemplateID string `json:"templateId"`
+	Name       string `json:"name,omitempty"`
+}
+
+// labFromTemplate instantiates a starter template into a new saved lab.
+func (h *Handler) labFromTemplate(w http.ResponseWriter, r *http.Request) {
+	var req fromTemplateRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.TemplateID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "templateId is required"})
+		return
+	}
+
+	res, err := ai.BuildTemplate(req.TemplateID, req.Name)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := h.Engine.SaveLab(r.Context(), res.Graph); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, res.Graph)
+}
+
 func (h *Handler) listLabs(w http.ResponseWriter, r *http.Request) {
 	labs, err := h.Engine.ListLabs(r.Context())
 	if err != nil {

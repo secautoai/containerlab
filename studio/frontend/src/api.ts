@@ -172,7 +172,17 @@ export const api = {
   importLab: (yaml: string, name?: string) => req<Graph>("POST", "/api/labs/import", { yaml, name }),
   saveConfigs: (name: string) =>
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/save`),
+  templates: () => req<Template[]>("GET", "/api/templates"),
+  labFromTemplate: (templateId: string, name?: string) =>
+    req<Graph>("POST", "/api/labs/from-template", { templateId, name }),
 };
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
 
 export interface ImpairmentParams {
   interface: string;
