@@ -38,6 +38,7 @@ func subcommandRegisterFuncs() []func(*Options) (*cobra.Command, error) {
 		redeployCmd,
 		saveCmd,
 		toolsCmd,
+		studioCmd,
 	}
 }
 

@@ -1,0 +1,393 @@
+// Copyright 2025
+// Licensed under the BSD 3-Clause License.
+// SPDX-License-Identifier: BSD-3-Clause
+
+package engine
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	clabconstants "github.com/srl-labs/containerlab/constants"
+	clabcore "github.com/srl-labs/containerlab/core"
+	clabruntime "github.com/srl-labs/containerlab/runtime"
+	"github.com/srl-labs/containerlab/studio/model"
+)
+
+// ClabEngine is the production Engine backed by containerlab's core.CLab. Labs
+// are stored on disk under <labsDir>/<name>/<name>.clab.yml, following common
+// containerlab conventions.
+type ClabEngine struct {
+	labsDir string
+	runtime string
+	timeout time.Duration
+	owner   string
+}
+
+// Config configures a ClabEngine.
+type Config struct {
+	LabsDir string
+	Runtime string
+	Timeout time.Duration
+	Owner   string
+}
+
+// NewClabEngine creates a filesystem-backed containerlab engine. The labs
+// directory is created if it does not exist.
+func NewClabEngine(cfg Config) (*ClabEngine, error) {
+	if cfg.LabsDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("could not determine home dir: %w", err)
+		}
+
+		cfg.LabsDir = filepath.Join(home, ".clab", "studio")
+	}
+
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 120 * time.Second
+	}
+
+	abs, err := filepath.Abs(cfg.LabsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return nil, fmt.Errorf("could not create labs dir %q: %w", abs, err)
+	}
+
+	return &ClabEngine{
+		labsDir: abs,
+		runtime: cfg.Runtime,
+		timeout: cfg.Timeout,
+		owner:   cfg.Owner,
+	}, nil
+}
+
+var _ Engine = (*ClabEngine)(nil)
+
+// LabsDir returns the directory where labs are stored.
+func (e *ClabEngine) LabsDir() string { return e.labsDir }
+
+// topoPath returns the on-disk path of a lab's topology file.
+func (e *ClabEngine) topoPath(name string) string {
+	return filepath.Join(e.labsDir, name, name+".clab.yml")
+}
+
+// Capabilities probes the container runtime for availability.
+func (e *ClabEngine) Capabilities(ctx context.Context) Capabilities {
+	name, _, _ := clabcore.RuntimeInitializer(e.runtime)
+	c := Capabilities{Runtime: name}
+
+	clab, err := e.baseCLab(name)
+	if err != nil {
+		c.Reason = err.Error()
+		return c
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := clab.CheckConnectivity(cctx); err != nil {
+		c.Reason = err.Error()
+		return c
+	}
+
+	c.RuntimeAvailable = true
+
+	return c
+}
+
+// baseCLab builds a minimal CLab with just a runtime configured (no topology).
+func (e *ClabEngine) baseCLab(_ string) (*clabcore.CLab, error) {
+	return clabcore.NewContainerLab(
+		clabcore.WithTimeout(e.timeout),
+		clabcore.WithRuntime(e.runtime, &clabruntime.RuntimeConfig{Timeout: e.timeout}),
+	)
+}
+
+// labCLabFromFile builds a CLab from a lab's on-disk topology file.
+func (e *ClabEngine) labCLabFromFile(name string) (*clabcore.CLab, error) {
+	path := e.topoPath(name)
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("%w: lab %q", ErrNotFound, name)
+	}
+
+	opts := []clabcore.ClabOption{
+		clabcore.WithTimeout(e.timeout),
+		clabcore.WithRuntime(e.runtime, &clabruntime.RuntimeConfig{Timeout: e.timeout}),
+		clabcore.WithTopoPath(path, nil),
+	}
+
+	if e.owner != "" {
+		opts = append(opts, clabcore.WithLabOwner(e.owner))
+	}
+
+	return clabcore.NewContainerLab(opts...)
+}
+
+// ListLabs scans the labs directory and marks labs that are currently deployed.
+func (e *ClabEngine) ListLabs(ctx context.Context) ([]LabSummary, error) {
+	entries, err := os.ReadDir(e.labsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	deployed := e.deployedLabNames(ctx)
+
+	out := make([]LabSummary, 0, len(entries))
+
+	for _, ent := range entries {
+		if !ent.IsDir() {
+			continue
+		}
+
+		name := ent.Name()
+
+		path := e.topoPath(name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue // not a studio lab dir
+		}
+
+		g, err := model.ClabYAMLToGraph(data)
+		if err != nil {
+			continue
+		}
+
+		_, isDeployed := deployed[name]
+
+		out = append(out, LabSummary{
+			Name:      name,
+			Path:      path,
+			NodeCount: len(g.Nodes),
+			Deployed:  isDeployed,
+			Owner:     e.owner,
+			State:     stateFor(isDeployed),
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+
+	return out, nil
+}
+
+// deployedLabNames returns the set of lab names that have running containers.
+// On any runtime error it returns an empty set (labs still show as defined).
+func (e *ClabEngine) deployedLabNames(ctx context.Context) map[string]struct{} {
+	result := map[string]struct{}{}
+
+	clab, err := e.baseCLab(e.runtime)
+	if err != nil {
+		return result
+	}
+
+	containers, err := clab.ListContainers(ctx, clabcore.WithListclabLabelExists())
+	if err != nil {
+		return result
+	}
+
+	for i := range containers {
+		if lab := containers[i].Labels[clabconstants.Containerlab]; lab != "" {
+			result[lab] = struct{}{}
+		}
+	}
+
+	return result
+}
+
+// GetLab reads and parses a lab's topology into the UI graph model.
+func (e *ClabEngine) GetLab(_ context.Context, name string) (*model.Graph, error) {
+	data, err := os.ReadFile(e.topoPath(name))
+	if err != nil {
+		return nil, fmt.Errorf("%w: lab %q", ErrNotFound, name)
+	}
+
+	return model.ClabYAMLToGraph(data)
+}
+
+// SaveLab writes a lab graph to disk as a containerlab topology file.
+func (e *ClabEngine) SaveLab(_ context.Context, g *model.Graph) error {
+	if g == nil || strings.TrimSpace(g.Name) == "" {
+		return fmt.Errorf("lab name is required")
+	}
+
+	if err := validateLabName(g.Name); err != nil {
+		return err
+	}
+
+	data, err := model.GraphToClabYAML(g)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Join(e.labsDir, g.Name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(e.topoPath(g.Name), data, 0o644)
+}
+
+// DeleteLab removes a lab directory from disk. The lab must not be deployed.
+func (e *ClabEngine) DeleteLab(ctx context.Context, name string) error {
+	if err := validateLabName(name); err != nil {
+		return err
+	}
+
+	if _, deployed := e.deployedLabNames(ctx)[name]; deployed {
+		return fmt.Errorf("lab %q is deployed; destroy it first", name)
+	}
+
+	dir := filepath.Join(e.labsDir, name)
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("%w: lab %q", ErrNotFound, name)
+	}
+
+	return os.RemoveAll(dir)
+}
+
+// RenderYAML returns the raw topology YAML for a lab.
+func (e *ClabEngine) RenderYAML(_ context.Context, name string) ([]byte, error) {
+	data, err := os.ReadFile(e.topoPath(name))
+	if err != nil {
+		return nil, fmt.Errorf("%w: lab %q", ErrNotFound, name)
+	}
+
+	return data, nil
+}
+
+// Deploy deploys a lab from its on-disk topology.
+func (e *ClabEngine) Deploy(ctx context.Context, name string) (*LabStatus, error) {
+	clab, err := e.labCLabFromFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := clab.CheckConnectivity(ctx); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+
+	deployOpts, err := clabcore.NewDeployOptions(0)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := clab.Deploy(ctx, deployOpts); err != nil {
+		return nil, err
+	}
+
+	return e.Status(ctx, name)
+}
+
+// Destroy tears down a deployed lab.
+func (e *ClabEngine) Destroy(ctx context.Context, name string, cleanup bool) error {
+	clab, err := e.labCLabFromFile(name)
+	if err != nil {
+		return err
+	}
+
+	if err := clab.CheckConnectivity(ctx); err != nil {
+		return fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+
+	opts := []clabcore.DestroyOption{clabcore.WithDestroyMaxWorkers(0)}
+	if cleanup {
+		opts = append(opts, clabcore.WithDestroyCleanup())
+	}
+
+	return clab.Destroy(ctx, opts...)
+}
+
+// Status returns the runtime status of a lab by inspecting its containers.
+func (e *ClabEngine) Status(ctx context.Context, name string) (*LabStatus, error) {
+	g, err := e.GetLab(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	st := &LabStatus{Name: name}
+
+	// index of defined nodes for merging runtime info
+	nodeByName := map[string]*NodeStatus{}
+	for _, n := range g.Nodes {
+		ns := NodeStatus{Name: n.Name, Kind: n.Kind, Image: n.Image, State: "stopped"}
+		st.Nodes = append(st.Nodes, ns)
+	}
+
+	for i := range st.Nodes {
+		nodeByName[st.Nodes[i].Name] = &st.Nodes[i]
+	}
+
+	clab, err := e.baseCLab(e.runtime)
+	if err != nil {
+		return st, nil // design-only info
+	}
+
+	containers, err := clab.ListContainers(ctx, clabcore.WithListLabName(name))
+	if err != nil {
+		return st, nil // runtime down; return defined-only status
+	}
+
+	for i := range containers {
+		nn := containers[i].Labels[clabconstants.NodeName]
+
+		ns, ok := nodeByName[nn]
+		if !ok {
+			continue
+		}
+
+		st.Deployed = true
+		ns.State = fmt.Sprintf("%s/%s", containers[i].State, containers[i].Status)
+		ns.IPv4Address = containers[i].GetContainerIPv4()
+		ns.IPv6Address = containers[i].GetContainerIPv6()
+	}
+
+	return st, nil
+}
+
+// Exec runs a command on a single node of a deployed lab.
+func (e *ClabEngine) Exec(ctx context.Context, lab, node, cmd string) (*ExecResult, error) {
+	clab, err := e.labCLabFromFile(lab)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := clab.CheckConnectivity(ctx); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrRuntimeUnavailable, err)
+	}
+
+	execCollection, err := clab.Exec(ctx, []string{cmd}, clabcore.WithListNodeName(node))
+	if err != nil {
+		return nil, err
+	}
+
+	res := &ExecResult{Node: node, Cmd: cmd}
+
+	// Extract the first result from the collection via its JSON dump.
+	dump, derr := execCollection.Dump(clabconstants.FormatJSON)
+	if derr == nil {
+		res.Stdout = dump
+	}
+
+	return res, nil
+}
+
+// validateLabName ensures a lab name is safe for filesystem paths.
+func validateLabName(name string) error {
+	if name == "" {
+		return fmt.Errorf("lab name is required")
+	}
+
+	if strings.ContainsAny(name, "/\\.. ") || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid lab name %q", name)
+	}
+
+	return nil
+}
