@@ -75,6 +75,7 @@ interface StudioState {
   nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
   impairNode: (node: string, params: import("./api").ImpairmentParams) => Promise<void>;
   throughputTest: (from: string, to: string) => Promise<void>;
+  capturePackets: (node: string, iface: string, count: number) => Promise<void>;
   configureLab: (protocol: "none" | "ospf" | "bgp") => Promise<void>;
   importLab: (yaml: string, name?: string) => Promise<void>;
   saveConfigs: () => Promise<void>;
@@ -539,6 +540,27 @@ export const useStore = create<StudioState>((set, get) => ({
       get().toast("success", `${from} → ${to}: ${res.summary}`);
     } catch (e) {
       get().toast("error", `iperf3 failed: ${(e as Error).message}`);
+    }
+  },
+
+  capturePackets: async (node, iface, count) => {
+    const g = get().graph;
+    if (!g) return;
+    get().toast("info", `Capturing ${count} packets on ${node}/${iface}…`);
+    try {
+      const blob = await api.capture(g.name, node, iface, count);
+      // Trigger a browser download of the .pcap file.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${g.name}-${node}-${iface}.pcap`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      get().toast("success", `Captured ${node}/${iface}.pcap`);
+    } catch (e) {
+      get().toast("error", `Capture failed: ${(e as Error).message}`);
     }
   },
 

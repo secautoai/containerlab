@@ -409,6 +409,27 @@ func (e *FakeEngine) Throughput(_ context.Context, lab, from, to string) (*Throu
 	return res, nil
 }
 
+// Capture implements Engine (in-memory: returns a valid minimal pcap when
+// deployed and inputs are valid).
+func (e *FakeEngine) Capture(_ context.Context, lab, _, iface string, count int) ([]byte, error) {
+	if _, err := buildCaptureCmd(iface, count); err != nil {
+		return nil, err
+	}
+
+	if !e.RuntimeUp {
+		return nil, ErrRuntimeUnavailable
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.deployed[lab] {
+		return nil, fmt.Errorf("lab %q is not deployed", lab)
+	}
+
+	return minimalPcap(), nil
+}
+
 // SaveConfigs implements Engine (in-memory: require deployed).
 func (e *FakeEngine) SaveConfigs(_ context.Context, lab string) error {
 	if !e.RuntimeUp {

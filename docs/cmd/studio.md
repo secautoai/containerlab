@@ -108,6 +108,7 @@ sudo containerlab studio --ai-base-url https://api.openai.com/v1 --ai-model gpt-
 | Check         | Pre-flight topology linter (errors/warnings) — gates deploy                 |
 | Validation    | End-to-end reachability (ping matrix) with a pass/fail report             |
 | Traffic test  | iperf3 throughput between two nodes (needs iperf3-capable images)           |
+| Packet capture| tcpdump on a node interface → downloadable .pcap (needs tcpdump in image)   |
 | Node ops      | Per-node start / stop / restart                                            |
 | Impairments   | Per-interface netem: delay, jitter, loss, rate, corruption                 |
 | YAML editor   | View/edit the raw `*.clab.yml` in-app and apply to the canvas               |
@@ -144,5 +145,6 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | `POST /api/labs/{name}/nodes/{node}/exec`       | Run a command on a node        |
 | `POST /api/labs/{name}/nodes/{node}/lifecycle`  | start / stop / restart a node  |
 | `POST /api/labs/{name}/nodes/{node}/impair`     | set/clear netem impairments    |
+| `POST /api/labs/{name}/nodes/{node}/capture`    | packet capture → .pcap          |
 | `GET  /api/labs/{name}/nodes/{node}/console`    | WebSocket console (TTY)        |
 | `POST /api/ai/chat`                             | Copilot chat turn              |

@@ -620,6 +620,21 @@ func (e *ClabEngine) Throughput(ctx context.Context, lab, from, to string) (*Thr
 	return runThroughput(ctx, e, lab, from, to)
 }
 
+// Capture captures packets on a node interface and returns raw pcap bytes.
+func (e *ClabEngine) Capture(ctx context.Context, lab, node, iface string, count int) ([]byte, error) {
+	cmd, err := buildCaptureCmd(iface, count)
+	if err != nil {
+		return nil, err
+	}
+
+	target, err := e.ConsoleTarget(ctx, lab, node)
+	if err != nil {
+		return nil, err
+	}
+
+	return captureViaDocker(ctx, target.Container, cmd)
+}
+
 // validateLabName ensures a lab name is safe for filesystem paths.
 func validateLabName(name string) error {
 	if name == "" {

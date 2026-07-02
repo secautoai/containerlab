@@ -124,6 +124,10 @@ type Engine interface {
 
 	// Throughput runs an iperf3 test from one node to another in a deployed lab.
 	Throughput(ctx context.Context, lab, from, to string) (*ThroughputResult, error)
+
+	// Capture captures `count` packets on a node interface and returns the raw
+	// pcap bytes (requires tcpdump in the node image and a running lab).
+	Capture(ctx context.Context, lab, node, iface string, count int) ([]byte, error)
 }
 
 // ImpairmentParams describes netem link impairments for an interface.

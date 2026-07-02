@@ -167,6 +167,57 @@ func TestLabCRUDFlow(t *testing.T) {
 	}
 }
 
+func TestCaptureNode(t *testing.T) {
+	srv, _ := newTestServer(true)
+	defer srv.Close()
+
+	body, _ := json.Marshal(createLabRequest{Name: "cap"})
+	_, _ = http.Post(srv.URL+"/api/labs", "application/json", bytes.NewReader(body))
+
+	g := &model.Graph{
+		Name: "cap",
+		Nodes: []*model.Node{
+			{Name: "a", Kind: "linux", Image: "network-multitool"},
+			{Name: "b", Kind: "linux", Image: "network-multitool"},
+		},
+		Links: []*model.Link{
+			{Source: "a", SourceEndpoint: "eth1", Target: "b", TargetEndpoint: "eth1"},
+		},
+	}
+	gb, _ := json.Marshal(g)
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/labs/cap", bytes.NewReader(gb))
+	req.Header.Set("Content-Type", "application/json")
+	_, _ = http.DefaultClient.Do(req)
+
+	// deploy so the fake engine reports the lab as running
+	_, _ = http.Post(srv.URL+"/api/labs/cap/deploy", "application/json", nil)
+
+	// capture => pcap download
+	cb, _ := json.Marshal(captureRequest{Interface: "eth1", Count: 10})
+	resp, err := http.Post(srv.URL+"/api/labs/cap/nodes/a/capture", "application/json", bytes.NewReader(cb))
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("capture status: %d", resp.StatusCode)
+	}
+
+	if ct := resp.Header.Get("Content-Type"); ct != "application/vnd.tcpdump.pcap" {
+		t.Errorf("unexpected content-type: %q", ct)
+	}
+
+	data := make([]byte, 4)
+	if _, err := resp.Body.Read(data); err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	// classic pcap little-endian magic
+	if data[0] != 0xd4 || data[1] != 0xc3 || data[2] != 0xb2 || data[3] != 0xa1 {
+		t.Errorf("unexpected pcap magic: % x", data)
+	}
+}
+
 func TestDeployRuntimeUnavailable(t *testing.T) {
 	srv, _ := newTestServer(false)
 	defer srv.Close()

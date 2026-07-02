@@ -175,6 +175,27 @@ export const api = {
   importLab: (yaml: string, name?: string) => req<Graph>("POST", "/api/labs/import", { yaml, name }),
   saveConfigs: (name: string) =>
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/save`),
+  capture: async (name: string, node: string, iface: string, count: number): Promise<Blob> => {
+    const res = await fetch(
+      `/api/labs/${encodeURIComponent(name)}/nodes/${encodeURIComponent(node)}/capture`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interface: iface, count }),
+      },
+    );
+    if (!res.ok) {
+      let m = `${res.status} ${res.statusText}`;
+      try {
+        const d = await res.json();
+        if (d && d.error) m = d.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(m);
+    }
+    return res.blob();
+  },
   login: (token: string) => req<unknown>("POST", "/api/login", { token }),
   logout: () => req<unknown>("POST", "/api/logout"),
   templates: () => req<Template[]>("GET", "/api/templates"),

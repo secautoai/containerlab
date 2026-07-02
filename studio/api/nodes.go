@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/srl-labs/containerlab/studio/engine"
@@ -141,6 +142,40 @@ func (h *Handler) iperfLab(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, res)
+}
+
+// captureRequest selects the interface and packet count for a capture.
+type captureRequest struct {
+	Interface string `json:"interface"`
+	Count     int    `json:"count"`
+}
+
+func (h *Handler) captureNode(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req captureRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Interface == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "interface is required"})
+		return
+	}
+
+	data, err := h.Engine.Capture(r.Context(), lab, node, req.Interface, req.Count)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	filename := fmt.Sprintf("%s-%s-%s.pcap", lab, node, req.Interface)
+	w.Header().Set("Content-Type", "application/vnd.tcpdump.pcap")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 func (h *Handler) validateLab(w http.ResponseWriter, r *http.Request) {
