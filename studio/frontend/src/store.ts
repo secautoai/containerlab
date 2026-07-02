@@ -8,6 +8,7 @@ import {
   type KindInfo,
   type LabStatus,
   type LabSummary,
+  type LintResult,
   type ValidationReport,
 } from "./api";
 
@@ -36,6 +37,7 @@ interface StudioState {
   copilotOpen: boolean;
   validation?: ValidationReport;
   validating: boolean;
+  lint?: LintResult;
 
   // actions
   init: () => Promise<void>;
@@ -57,6 +59,8 @@ interface StudioState {
   refreshStatus: () => Promise<void>;
   validate: () => Promise<void>;
   clearValidation: () => void;
+  checkGraph: () => Promise<void>;
+  clearLint: () => void;
   nodeAction: (node: string, action: "start" | "stop" | "restart") => Promise<void>;
   impairNode: (node: string, params: import("./api").ImpairmentParams) => Promise<void>;
   configureLab: (protocol: "none" | "ospf" | "bgp") => Promise<void>;
@@ -117,6 +121,7 @@ export const useStore = create<StudioState>((set, get) => ({
   toasts: [],
   copilotOpen: false,
   validating: false,
+  lint: undefined,
 
   init: async () => {
     applyTheme(get().theme);
@@ -270,10 +275,31 @@ export const useStore = create<StudioState>((set, get) => ({
 
   selectNode: (name) => set({ selectedNode: name }),
 
+  checkGraph: async () => {
+    const g = get().graph;
+    if (!g) return;
+    try {
+      const lint = await api.lint(g);
+      set({ lint });
+      if (lint.ok && lint.warnings === 0) get().toast("success", "No issues found");
+    } catch (e) {
+      get().toast("error", `Check failed: ${(e as Error).message}`);
+    }
+  },
+
+  clearLint: () => set({ lint: undefined }),
+
   deploy: async () => {
     const g = get().graph;
     if (!g) return;
     try {
+      // Pre-flight lint: block deployment when there are errors.
+      const lint = await api.lint(g);
+      if (!lint.ok) {
+        set({ lint });
+        get().toast("error", `Cannot deploy: ${lint.errors} error(s) in topology`);
+        return;
+      }
       if (get().dirty) await get().saveGraph();
       get().toast("info", `Deploying "${g.name}"…`);
       const status = await api.deploy(g.name);

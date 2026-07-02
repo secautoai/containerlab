@@ -164,6 +164,17 @@ func (h *Handler) saveConfigs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "configs saved"})
 }
 
+// lint runs pre-flight design checks on a posted topology graph.
+func (h *Handler) lint(w http.ResponseWriter, r *http.Request) {
+	var g model.Graph
+	if err := decodeJSON(r, &g); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, model.Lint(&g))
+}
+
 func (h *Handler) getLab(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 

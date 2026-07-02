@@ -13,6 +13,7 @@ import {
   Loader2,
   Network,
   Archive,
+  ClipboardCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "../store";
@@ -31,6 +32,7 @@ export default function TopBar() {
   const validating = useStore((s) => s.validating);
   const configureLab = useStore((s) => s.configureLab);
   const saveConfigs = useStore((s) => s.saveConfigs);
+  const checkGraph = useStore((s) => s.checkGraph);
   const refreshStatus = useStore((s) => s.refreshStatus);
   const [cfgOpen, setCfgOpen] = useState(false);
   const toggleTheme = useStore((s) => s.toggleTheme);
@@ -80,6 +82,14 @@ export default function TopBar() {
         >
           <Download size={15} /> YAML
         </a>
+        <button
+          className={`${btn} border border-slate-300 dark:border-slate-700`}
+          disabled={!graph}
+          onClick={() => checkGraph()}
+          title="Check topology for problems"
+        >
+          <ClipboardCheck size={15} /> Check
+        </button>
         <button
           className={`${btn} bg-emerald-500 text-white hover:bg-emerald-600`}
           disabled={!graph || !caps?.runtimeAvailable}

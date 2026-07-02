@@ -175,7 +175,22 @@ export const api = {
   templates: () => req<Template[]>("GET", "/api/templates"),
   labFromTemplate: (templateId: string, name?: string) =>
     req<Graph>("POST", "/api/labs/from-template", { templateId, name }),
+  lint: (g: Graph) => req<LintResult>("POST", "/api/lint", g),
 };
+
+export interface LintIssue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  node?: string;
+}
+
+export interface LintResult {
+  issues: LintIssue[];
+  errors: number;
+  warnings: number;
+  ok: boolean;
+}
 
 export interface Template {
   id: string;
