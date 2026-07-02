@@ -23,6 +23,9 @@ pub struct Lab {
     /// Long-form lab documentation / workbook (Markdown).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub body: String,
+    /// Locked labs reject topology/config edits (lifecycle still allowed).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
     #[serde(default = "default_version")]
     pub version: u32,
     pub created_at: DateTime<Utc>,
@@ -55,6 +58,7 @@ impl Lab {
             author: String::new(),
             folder: "/".into(),
             body: String::new(),
+            locked: false,
             version: 1,
             created_at: now,
             modified_at: now,

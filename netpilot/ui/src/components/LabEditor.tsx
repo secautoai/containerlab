@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   BookOpen,
   Download,
+  Lock,
+  LockOpen,
   Network as NetworkIcon,
   Play,
   Sparkles,
@@ -158,6 +160,21 @@ export default function LabEditor() {
             className="rounded-md border border-ink-700 p-1.5 text-ink-300 hover:border-ink-600 hover:text-white"
           >
             <SquareDashed size={14} />
+          </button>
+          <button
+            onClick={async () => {
+              await api.setLock(lab.id, !lab.locked)
+              await refreshLab()
+              pushLog('info', lab.locked ? 'lab unlocked' : 'lab locked (read-only)')
+            }}
+            title={lab.locked ? 'Unlock lab (allow edits)' : 'Lock lab (read-only)'}
+            className={`rounded-md border p-1.5 ${
+              lab.locked
+                ? 'border-amber-700 text-amber-400'
+                : 'border-ink-700 text-ink-300 hover:border-ink-600 hover:text-white'
+            }`}
+          >
+            {lab.locked ? <Lock size={14} /> : <LockOpen size={14} />}
           </button>
           <button
             onClick={() => {

@@ -218,6 +218,52 @@ async fn lab_node_link_lifecycle() {
 }
 
 #[tokio::test]
+async fn lab_locking() {
+    let (app, _dir) = test_app().await;
+    let (_, lab) = call(&app, "POST", "/api/labs", Some(json!({"name": "locked"}))).await;
+    let lab_id = lab["id"].as_str().unwrap().to_string();
+
+    // lock it
+    let (st, locked) = call(
+        &app,
+        "PUT",
+        &format!("/api/labs/{lab_id}/lock"),
+        Some(json!({"locked": true})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(locked["locked"], true);
+
+    // edits are rejected
+    let (st, err) = call(
+        &app,
+        "POST",
+        &format!("/api/labs/{lab_id}/nodes"),
+        Some(json!({"template": "vyos", "name": "R1"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    assert!(err["error"].as_str().unwrap().contains("locked"));
+
+    // unlock and edit again
+    call(
+        &app,
+        "PUT",
+        &format!("/api/labs/{lab_id}/lock"),
+        Some(json!({"locked": false})),
+    )
+    .await;
+    let (st, _) = call(
+        &app,
+        "POST",
+        &format!("/api/labs/{lab_id}/nodes"),
+        Some(json!({"template": "vyos", "name": "R1"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn import_export_roundtrip() {
     let (app, _dir) = test_app().await;
 

@@ -58,7 +58,7 @@ Legend: [x] done · [~] partial · [ ] planned
 - [x] Static serving of the built UI
 - [x] OpenAPI-documented JSON (consistent envelope, proper verbs — no GET-mutations like EVE)
 - [ ] Multi-user auth, RBAC, per-user folders (EVE Pro)
-- [ ] Lab locking, countdown timers (Learning Center)
+- [x] Lab locking (edits rejected while locked) · [ ] countdown timers
 
 ## Phase 5 — React UI (modern, dark-first)
 - [x] Lab dashboard: lab cards, create/clone/delete, folders
@@ -90,7 +90,7 @@ Legend: [x] done · [~] partial · [ ] planned
 - [x] Lab export/import as zip (topology + configs)
 - [x] Containerlab .clab.yml import (nodes/links mapping to templates)
 - [x] EVE-NG .unl import (nodes, networks, interfaces, configs, text objects)
-- [ ] CML YAML import
+- [x] CML2 YAML import (node_definition mapping, interface slots, configs, notes)
 - [ ] .pkt export (Packet Tracer)
 
 ## Phase 8 — Hardening & scale
@@ -107,7 +107,7 @@ Legend: [x] done · [~] partial · [ ] planned
 | QEMU nodes, per-node overlay, wipe | Phase 2 ✅ |
 | IOL / dynamips backends | Out of scope (licensing; QEMU covers modern images) |
 | Docker nodes (Pro) | Phase 8 |
-| Folders, lab files, lock | Folders ✅, lock Phase 4 |
+| Folders, lab files, lock | Folders ✅, lock ✅ |
 | Startup configs + config sets | Configs ✅; sets planned |
 | Multi-user pods, RBAC (Pro) | Phase 4 planned |
 | Telnet/VNC/HTML5 consoles | Serial→WS ✅, VNC embed planned |

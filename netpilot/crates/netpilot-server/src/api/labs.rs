@@ -129,6 +129,19 @@ pub async fn clone_lab(
     Ok(Json(copy))
 }
 
+#[derive(Deserialize)]
+pub struct SetLock {
+    pub locked: bool,
+}
+
+pub async fn set_lock(
+    State(state): State<AppState>,
+    Path(lab_id): Path<Uuid>,
+    Json(req): Json<SetLock>,
+) -> ApiResult<Json<Lab>> {
+    state.set_locked(lab_id, req.locked).await.map(Json)
+}
+
 pub async fn start(
     State(state): State<AppState>,
     Path(lab_id): Path<Uuid>,

@@ -65,6 +65,8 @@ pub async fn import_lab(State(state): State<AppState>, body: Bytes) -> ApiResult
         let trimmed = text.trim_start();
         if trimmed.starts_with("<?xml") || trimmed.starts_with("<lab") {
             import_unl(&text)?
+        } else if text.contains("node_definition") {
+            import_cml(&text)?
         } else if text.contains("topology:")
             && text.contains("nodes:")
             && !text.contains("modified_at")
@@ -405,6 +407,172 @@ fn decode_b64(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+// ---------- Cisco Modeling Labs (CML2) ----------
+
+mod cml {
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    pub struct CmlTopo {
+        #[serde(default)]
+        pub lab: Option<CmlLabMeta>,
+        #[serde(default)]
+        pub nodes: Vec<CmlNode>,
+        #[serde(default)]
+        pub links: Vec<CmlLink>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct CmlLabMeta {
+        #[serde(default)]
+        pub title: Option<String>,
+        #[serde(default)]
+        pub description: Option<String>,
+        #[serde(default)]
+        pub notes: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct CmlNode {
+        pub id: String,
+        #[serde(default)]
+        pub label: Option<String>,
+        #[serde(default)]
+        pub node_definition: String,
+        #[serde(default)]
+        pub x: Option<f64>,
+        #[serde(default)]
+        pub y: Option<f64>,
+        #[serde(default)]
+        pub configuration: Option<String>,
+        #[serde(default)]
+        pub interfaces: Vec<CmlInterface>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct CmlInterface {
+        pub id: String,
+        #[serde(default)]
+        pub slot: Option<u32>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct CmlLink {
+        pub n1: String,
+        pub i1: String,
+        pub n2: String,
+        pub i2: String,
+    }
+}
+
+/// CML node_definition → NetPilot template (best effort).
+fn map_cml_definition(d: &str) -> &'static str {
+    match d {
+        "iosv" => "iosv",
+        "iosvl2" => "iosvl2",
+        "csr1000v" => "csr1000v",
+        "cat8000v" | "c8000v" => "cat8000v",
+        "iosxrv9000" | "xrv9k" => "xrv9k",
+        d if d.contains("nxos") => "linux",
+        d if d.contains("asav") => "linux",
+        d if d.contains("veos") || d.contains("eos") => "veos",
+        d if d.contains("vsrx") || d.contains("juniper") => "vsrx",
+        d if d.contains("vyos") => "vyos",
+        d if d.contains("frr") => "frr",
+        _ => "linux",
+    }
+}
+
+fn import_cml(yaml: &str) -> ApiResult<Lab> {
+    let parsed: cml::CmlTopo = serde_yaml::from_str(yaml)
+        .map_err(|e| ApiError::bad_request(format!("bad CML YAML: {e}")))?;
+
+    let title = parsed
+        .lab
+        .as_ref()
+        .and_then(|l| l.title.clone())
+        .unwrap_or_else(|| "Imported CML lab".into());
+    let mut lab = Lab::new(title);
+    lab.description = parsed
+        .lab
+        .as_ref()
+        .and_then(|l| l.description.clone())
+        .unwrap_or_else(|| "Imported from Cisco Modeling Labs".into());
+    lab.body = parsed.lab.and_then(|l| l.notes).unwrap_or_default();
+
+    // CML canvas is centered on 0; shift into positive space.
+    let (min_x, min_y) = parsed
+        .nodes
+        .iter()
+        .fold((f64::MAX, f64::MAX), |(mx, my), n| {
+            (mx.min(n.x.unwrap_or(0.0)), my.min(n.y.unwrap_or(0.0)))
+        });
+    let (off_x, off_y) = (
+        120.0 - if min_x.is_finite() { min_x } else { 0.0 },
+        120.0 - if min_y.is_finite() { min_y } else { 0.0 },
+    );
+
+    // node id -> (uuid, interface-id -> slot index)
+    let mut mapping: HashMap<String, (Uuid, HashMap<String, u32>)> = HashMap::new();
+    for (i, n) in parsed.nodes.iter().enumerate() {
+        let id = Uuid::new_v4();
+        let mut if_map = HashMap::new();
+        for (pos, itf) in n.interfaces.iter().enumerate() {
+            if_map.insert(itf.id.clone(), itf.slot.unwrap_or(pos as u32));
+        }
+        let iface_count = n
+            .interfaces
+            .iter()
+            .enumerate()
+            .map(|(pos, itf)| itf.slot.unwrap_or(pos as u32) + 1)
+            .max()
+            .unwrap_or(4)
+            .max(4);
+        mapping.insert(n.id.clone(), (id, if_map));
+        lab.nodes.insert(
+            id,
+            Node {
+                id,
+                name: n.label.clone().unwrap_or_else(|| format!("N{i}")),
+                template: map_cml_definition(&n.node_definition).into(),
+                image: String::new(),
+                cpus: 1,
+                ram_mb: 1024,
+                interfaces: iface_count,
+                console: Default::default(),
+                icon: String::new(),
+                x: n.x.unwrap_or((i as f64 % 5.0) * 180.0) + off_x,
+                y: n.y.unwrap_or((i as f64 / 5.0).floor() * 150.0) + off_y,
+                startup_config: n.configuration.clone().filter(|c| !c.trim().is_empty()),
+                boot_delay_s: 0,
+                overrides: BTreeMap::new(),
+            },
+        );
+    }
+
+    for l in &parsed.links {
+        let (Some((na, ia_map)), Some((nb, ib_map))) = (mapping.get(&l.n1), mapping.get(&l.n2))
+        else {
+            continue;
+        };
+        let ia = *ia_map.get(&l.i1).unwrap_or(&0);
+        let ib = *ib_map.get(&l.i2).unwrap_or(&0);
+        let link = Link::between(
+            Endpoint::Node {
+                node: *na,
+                iface: ia,
+            },
+            Endpoint::Node {
+                node: *nb,
+                iface: ib,
+            },
+        );
+        let _ = lab.add_link(link);
+    }
+
+    Ok(lab)
+}
+
 // ---------- containerlab ----------
 
 mod clab {
@@ -595,6 +763,66 @@ topology:
         assert_eq!(lab.links.len(), 1);
         let eos = lab.nodes.values().find(|n| n.name == "eos1").unwrap();
         assert_eq!(eos.template, "veos");
+    }
+
+    #[test]
+    fn cml_import_maps_definitions_and_slots() {
+        let yaml = r##"
+lab:
+  title: cml-pair
+  description: two routers
+  notes: "# workbook"
+nodes:
+  - id: n0
+    label: R1
+    node_definition: iosv
+    x: -200
+    y: 0
+    configuration: "hostname R1"
+    interfaces:
+      - id: i0
+        label: GigabitEthernet0/0
+        slot: 0
+      - id: i1
+        label: GigabitEthernet0/1
+        slot: 1
+  - id: n1
+    label: R2
+    node_definition: csr1000v
+    x: 200
+    y: 0
+    interfaces:
+      - id: i0
+        slot: 0
+links:
+  - id: l0
+    n1: n0
+    i1: i1
+    n2: n1
+    i2: i0
+"##;
+        let lab = import_cml(yaml).unwrap();
+        assert_eq!(lab.name, "cml-pair");
+        assert_eq!(lab.body, "# workbook");
+        assert_eq!(lab.nodes.len(), 2);
+        let r1 = lab.nodes.values().find(|n| n.name == "R1").unwrap();
+        assert_eq!(r1.template, "iosv");
+        assert_eq!(r1.startup_config.as_deref(), Some("hostname R1"));
+        assert!(r1.x >= 0.0, "coordinates shifted into positive space");
+        let r2 = lab.nodes.values().find(|n| n.name == "R2").unwrap();
+        assert_eq!(r2.template, "csr1000v");
+        assert_eq!(lab.links.len(), 1);
+        let link = lab.links.values().next().unwrap();
+        // R1 uses slot 1, R2 slot 0
+        let ifaces: Vec<u32> = link
+            .endpoints()
+            .iter()
+            .filter_map(|e| match e {
+                Endpoint::Node { iface, .. } => Some(*iface),
+                _ => None,
+            })
+            .collect();
+        assert!(ifaces.contains(&1) && ifaces.contains(&0));
     }
 
     #[test]

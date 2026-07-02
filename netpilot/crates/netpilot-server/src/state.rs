@@ -88,11 +88,27 @@ impl AppState {
     ) -> ApiResult<T> {
         let _guard = self.lab_write_lock.lock().await;
         let mut lab = self.store.load(lab_id)?;
+        if lab.locked {
+            return Err(ApiError::conflict(
+                "lab is locked — unlock it before editing",
+            ));
+        }
         let out = f(&mut lab)?;
         lab.touch();
         self.store.save(&lab)?;
         self.events.publish(Event::LabUpdated { lab: lab_id });
         Ok(out)
+    }
+
+    /// Lock/unlock a lab (bypasses the locked check by design).
+    pub async fn set_locked(&self, lab_id: Uuid, locked: bool) -> ApiResult<Lab> {
+        let _guard = self.lab_write_lock.lock().await;
+        let mut lab = self.store.load(lab_id)?;
+        lab.locked = locked;
+        lab.touch();
+        self.store.save(&lab)?;
+        self.events.publish(Event::LabUpdated { lab: lab_id });
+        Ok(lab)
     }
 
     pub async fn switch_for(&self, lab: Uuid) -> UdpSwitch {

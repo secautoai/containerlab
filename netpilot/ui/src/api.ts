@@ -81,6 +81,7 @@ export interface Lab {
   author: string
   folder: string
   body?: string
+  locked?: boolean
   created_at: string
   modified_at: string
   nodes: Record<string, LabNode>
@@ -180,6 +181,8 @@ export const api = {
   lab: (id: string) => request<LabView>('GET', `/api/labs/${id}`),
   updateLab: (id: string, body: Partial<Pick<Lab, 'name' | 'description' | 'folder' | 'body'>>) =>
     request<Lab>('PUT', `/api/labs/${id}`, body),
+  setLock: (id: string, locked: boolean) =>
+    request<Lab>('PUT', `/api/labs/${id}/lock`, { locked }),
   labStats: (id: string) =>
     request<{ node: string; rss_mb: number; cpu_seconds: number }[]>(
       'GET',

@@ -35,6 +35,7 @@ pub fn router(state: AppState) -> Router {
             get(labs::get_lab).put(labs::update).delete(labs::remove),
         )
         .route("/api/labs/{lab}/clone", post(labs::clone_lab))
+        .route("/api/labs/{lab}/lock", put(labs::set_lock))
         .route("/api/labs/{lab}/start", post(labs::start))
         .route("/api/labs/{lab}/stop", post(labs::stop))
         // nodes
