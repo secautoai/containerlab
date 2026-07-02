@@ -40,6 +40,8 @@ pub trait LabToolbox: Send + Sync {
         command: String,
         timeout_s: u32,
     ) -> Result<Value, String>;
+    /// Set link quality / suspension on the link between two nodes.
+    async fn set_link_quality(&self, args: Value) -> Result<Value, String>;
 }
 
 /// Tool definitions advertised to the model.
@@ -161,6 +163,23 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             }),
         ),
         t(
+            "set_link_quality",
+            "Impair or suspend the link between two nodes, live (delay/jitter in ms, loss in %, rate in kbit/s; zeros clear). Useful for failure testing.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "a_node": {"type": "string"},
+                    "b_node": {"type": "string"},
+                    "delay_ms": {"type": "integer"},
+                    "jitter_ms": {"type": "integer"},
+                    "loss_pct": {"type": "number"},
+                    "rate_kbit": {"type": "integer"},
+                    "suspended": {"type": "boolean"}
+                },
+                "required": ["a_node", "b_node"]
+            }),
+        ),
+        t(
             "run_command",
             "Run a CLI command on a RUNNING node's serial console and return the output. Use for verification (show commands) and live configuration. One command per call.",
             json!({
@@ -212,6 +231,7 @@ pub async fn dispatch(
                 .unwrap_or(10) as u32;
             toolbox.run_command(node, command, timeout).await
         }
+        "set_link_quality" => toolbox.set_link_quality(input.clone()).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

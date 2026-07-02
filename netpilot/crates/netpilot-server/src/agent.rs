@@ -372,6 +372,71 @@ impl LabToolbox for StateToolbox {
         }
     }
 
+    async fn set_link_quality(&self, args: Value) -> Result<Value, String> {
+        let a_name = args
+            .get("a_node")
+            .and_then(|v| v.as_str())
+            .ok_or("missing a_node")?;
+        let b_name = args
+            .get("b_node")
+            .and_then(|v| v.as_str())
+            .ok_or("missing b_node")?;
+        let lab = self
+            .state
+            .store
+            .load(self.lab_id)
+            .map_err(|e| e.to_string())?;
+        let a = self.find_node(&lab, a_name)?;
+        let b = self.find_node(&lab, b_name)?;
+        let link = lab
+            .links
+            .values()
+            .find(|l| l.touches_node(a.id) && l.touches_node(b.id))
+            .cloned()
+            .ok_or_else(|| format!("no link between {a_name} and {b_name}"))?;
+
+        let g = |k: &str| args.get(k).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let imp = netpilot_core::Impairment {
+            delay_ms: g("delay_ms"),
+            jitter_ms: g("jitter_ms"),
+            loss_pct: args.get("loss_pct").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+            rate_kbit: g("rate_kbit"),
+        };
+        let suspended = args
+            .get("suspended")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(link.suspended);
+
+        self.state
+            .mutate_lab(self.lab_id, |lab| {
+                let l = lab.links.get_mut(&link.id).ok_or_else(|| {
+                    crate::error::ApiError::not_found("link vanished during update")
+                })?;
+                l.impairment = if imp.is_noop() { None } else { Some(imp) };
+                l.suspended = suspended;
+                Ok(())
+            })
+            .await
+            .map_err(|e| e.message)?;
+
+        let switch = self.state.switch_for(self.lab_id).await;
+        switch.set_impairment(
+            link.id,
+            netpilot_net::WireImpairment {
+                delay_ms: imp.delay_ms,
+                jitter_ms: imp.jitter_ms,
+                loss_pct: imp.loss_pct,
+                rate_kbit: imp.rate_kbit,
+            },
+        );
+        switch.set_link_suspended(link.id, suspended);
+        Ok(json!({
+            "link": format!("{a_name} <-> {b_name}"),
+            "impairment": imp,
+            "suspended": suspended
+        }))
+    }
+
     async fn run_command(
         &self,
         node: String,

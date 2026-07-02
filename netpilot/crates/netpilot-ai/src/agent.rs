@@ -240,6 +240,9 @@ mod tests {
         ) -> Result<Value, String> {
             Ok(json!(format!("{node}# {command}\nok")))
         }
+        async fn set_link_quality(&self, args: Value) -> Result<Value, String> {
+            Ok(args)
+        }
     }
 
     #[tokio::test]
