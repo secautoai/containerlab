@@ -17,6 +17,7 @@ import {
   Code2,
   Undo2,
   Redo2,
+  LogOut,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useStore } from "../store";
@@ -39,6 +40,7 @@ export default function TopBar() {
   const refreshStatus = useStore((s) => s.refreshStatus);
   const [cfgOpen, setCfgOpen] = useState(false);
   const toggleTheme = useStore((s) => s.toggleTheme);
+  const logout = useStore((s) => s.logout);
   const toggleCopilot = useStore((s) => s.toggleCopilot);
   const toggleYamlEditor = useStore((s) => s.toggleYamlEditor);
   const undo = useStore((s) => s.undo);
@@ -232,6 +234,15 @@ export default function TopBar() {
         >
           {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
         </button>
+        {caps?.authRequired && (
+          <button
+            className={`${btn} border border-slate-300 dark:border-slate-700`}
+            onClick={() => logout()}
+            title="Log out"
+          >
+            <LogOut size={15} />
+          </button>
+        )}
       </div>
     </header>
   );

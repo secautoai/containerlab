@@ -52,6 +52,13 @@ func studioCmd(o *Options) (*cobra.Command, error) {
 		o.Studio.AIModel,
 		"chat model used by the Copilot",
 	)
+	c.Flags().StringVarP(
+		&o.Studio.AuthToken,
+		"auth-token",
+		"",
+		o.Studio.AuthToken,
+		"shared secret to require login (also via CLAB_STUDIO_AUTH_TOKEN); empty = open access",
+	)
 
 	return c, nil
 }
@@ -63,6 +70,11 @@ func studioFn(cobraCmd *cobra.Command, o *Options) error {
 		if o.Studio.AIAPIKey == "" {
 			o.Studio.AIAPIKey = os.Getenv("OPENAI_API_KEY")
 		}
+	}
+
+	// The auth token is read from the environment to avoid leaking it via flags.
+	if o.Studio.AuthToken == "" {
+		o.Studio.AuthToken = os.Getenv("CLAB_STUDIO_AUTH_TOKEN")
 	}
 
 	eng, err := clabstudioengine.NewClabEngine(clabstudioengine.Config{
@@ -81,6 +93,7 @@ func studioFn(cobraCmd *cobra.Command, o *Options) error {
 		AIBaseURL: o.Studio.AIBaseURL,
 		AIModel:   o.Studio.AIModel,
 		AIAPIKey:  o.Studio.AIAPIKey,
+		AuthToken: o.Studio.AuthToken,
 	})
 }
 

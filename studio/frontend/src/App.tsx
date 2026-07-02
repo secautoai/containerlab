@@ -10,6 +10,7 @@ import CopilotPanel from "./components/CopilotPanel";
 import ValidationModal from "./components/ValidationModal";
 import LintModal from "./components/LintModal";
 import YamlEditorModal from "./components/YamlEditorModal";
+import LoginScreen from "./components/LoginScreen";
 import Toasts from "./components/Toasts";
 
 export default function App() {
@@ -25,6 +26,16 @@ export default function App() {
       if (lab) openLab(lab);
     });
   }, [init, openLab]);
+
+  // Gate the whole app behind login when the server requires authentication.
+  if (caps?.authRequired && !caps.authenticated) {
+    return (
+      <>
+        <LoginScreen />
+        <Toasts />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

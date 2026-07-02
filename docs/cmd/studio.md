@@ -47,6 +47,13 @@ Defaults to `https://api.openai.com/v1`.
 
 Chat model used by the Copilot. Defaults to `gpt-4o-mini`.
 
+### `--auth-token`
+
+Shared secret that gates access to the UI and API. When set (via the flag or
+`CLAB_STUDIO_AUTH_TOKEN`), users must log in with the token; a session cookie is
+issued and `Authorization: Bearer <token>` is also accepted. When empty (default)
+access is open — intended for trusted/localhost use.
+
 The API key is read from the environment (never a flag) via
 `CLAB_STUDIO_AI_API_KEY` (or `OPENAI_API_KEY`). When no key is configured, the
 Copilot still works using a built-in **offline topology generator** that
@@ -114,6 +121,7 @@ ClabStudio exposes a small JSON API (used by the SPA, also usable directly):
 | Method & path                                   | Description                    |
 | ----------------------------------------------- | ------------------------------ |
 | `GET /api/health`                               | Health check                   |
+| `POST /api/login` \| `/api/logout`              | Auth (when a token is set)      |
 | `GET /api/capabilities`                         | Runtime & AI availability      |
 | `GET /api/catalog`                              | Node kind palette              |
 | `GET /api/templates`                            | Quick-start topology catalog   |

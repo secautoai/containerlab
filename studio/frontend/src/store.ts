@@ -45,6 +45,8 @@ interface StudioState {
 
   // actions
   init: () => Promise<void>;
+  login: (token: string) => Promise<boolean>;
+  logout: () => Promise<void>;
   refreshLabs: () => Promise<void>;
   openLab: (name: string) => Promise<void>;
   createLab: (name: string) => Promise<void>;
@@ -141,12 +143,39 @@ export const useStore = create<StudioState>((set, get) => ({
   init: async () => {
     applyTheme(get().theme);
     try {
-      const [catalog, capabilities] = await Promise.all([api.catalog(), api.capabilities()]);
-      set({ catalog, capabilities });
+      const capabilities = await api.capabilities();
+      set({ capabilities });
+      // When auth is required and we're not authenticated, stop here; the login
+      // screen will call init() again after a successful login.
+      if (capabilities.authRequired && !capabilities.authenticated) return;
+      const catalog = await api.catalog();
+      set({ catalog });
     } catch (e) {
       get().toast("error", `Failed to load backend: ${(e as Error).message}`);
+      return;
     }
     await get().refreshLabs();
+  },
+
+  login: async (token) => {
+    try {
+      await api.login(token);
+      await get().init();
+      return true;
+    } catch (e) {
+      get().toast("error", `Login failed: ${(e as Error).message}`);
+      return false;
+    }
+  },
+
+  logout: async () => {
+    try {
+      await api.logout();
+    } catch {
+      /* ignore */
+    }
+    set({ graph: undefined, labs: [], status: undefined });
+    await get().init();
   },
 
   refreshLabs: async () => {

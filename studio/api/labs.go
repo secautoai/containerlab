@@ -25,6 +25,8 @@ func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
 		"runtime":          caps.Runtime,
 		"reason":           caps.Reason,
 		"aiAvailable":      h.AI != nil && h.AI.Available(),
+		"authRequired":     h.AuthToken != "",
+		"authenticated":    h.AuthToken == "" || tokenValid(r, h.AuthToken),
 	}
 
 	writeJSON(w, http.StatusOK, resp)

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"testing"
 
@@ -19,12 +20,24 @@ import (
 func newTestServer(runtimeUp bool) (*httptest.Server, *engine.FakeEngine) {
 	eng := engine.NewFakeEngine(runtimeUp)
 	agent := ai.NewAgent(ai.Config{Engine: eng}) // offline agent (no API key)
-	h := New(eng, agent)
+	h := New(eng, agent, "")
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
 	return httptest.NewServer(mux), eng
+}
+
+// newAuthTestServer returns a server with authentication enabled.
+func newAuthTestServer(token string) *httptest.Server {
+	eng := engine.NewFakeEngine(true)
+	agent := ai.NewAgent(ai.Config{Engine: eng})
+	h := New(eng, agent, token)
+
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	return httptest.NewServer(h.AuthMiddleware(mux))
 }
 
 func TestHealthAndCatalog(t *testing.T) {
@@ -403,6 +416,69 @@ func TestConfigureLab(t *testing.T) {
 		if len(n.Exec) == 0 {
 			t.Fatalf("node %s missing exec after configure", n.Name)
 		}
+	}
+}
+
+func TestAuthFlow(t *testing.T) {
+	srv := newAuthTestServer("s3cret")
+	defer srv.Close()
+
+	// health + capabilities are exempt
+	if resp, _ := http.Get(srv.URL + "/api/health"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("health should be exempt, got %d", resp.StatusCode)
+	}
+
+	// protected route without auth => 401
+	resp, err := http.Get(srv.URL + "/api/labs")
+	if err != nil {
+		t.Fatalf("labs: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without auth, got %d", resp.StatusCode)
+	}
+
+	// wrong token login => 401
+	bad, _ := json.Marshal(loginRequest{Token: "nope"})
+	resp, _ = http.Post(srv.URL+"/api/login", "application/json", bytes.NewReader(bad))
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for bad token, got %d", resp.StatusCode)
+	}
+
+	// correct login => 200 + cookie
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	good, _ := json.Marshal(loginRequest{Token: "s3cret"})
+	resp, _ = client.Post(srv.URL+"/api/login", "application/json", bytes.NewReader(good))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on login, got %d", resp.StatusCode)
+	}
+
+	// now the protected route works with the cookie jar
+	resp, _ = client.Get(srv.URL + "/api/labs")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 after login, got %d", resp.StatusCode)
+	}
+
+	// bearer token also works
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/labs", nil)
+	req.Header.Set("Authorization", "Bearer s3cret")
+
+	resp, _ = http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 with bearer, got %d", resp.StatusCode)
+	}
+
+	// logout clears the cookie => 401 again
+	resp, _ = client.Post(srv.URL+"/api/logout", "application/json", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("logout status %d", resp.StatusCode)
+	}
+
+	resp, _ = client.Get(srv.URL + "/api/labs")
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 after logout, got %d", resp.StatusCode)
 	}
 }
 

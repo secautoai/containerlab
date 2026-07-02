@@ -80,6 +80,8 @@ export interface Capabilities {
   runtime: string;
   reason?: string;
   aiAvailable: boolean;
+  authRequired?: boolean;
+  authenticated?: boolean;
 }
 
 export interface ChatReply {
@@ -173,6 +175,8 @@ export const api = {
   importLab: (yaml: string, name?: string) => req<Graph>("POST", "/api/labs/import", { yaml, name }),
   saveConfigs: (name: string) =>
     req<unknown>("POST", `/api/labs/${encodeURIComponent(name)}/save`),
+  login: (token: string) => req<unknown>("POST", "/api/login", { token }),
+  logout: () => req<unknown>("POST", "/api/logout"),
   templates: () => req<Template[]>("GET", "/api/templates"),
   labFromTemplate: (templateId: string, name?: string) =>
     req<Graph>("POST", "/api/labs/from-template", { templateId, name }),

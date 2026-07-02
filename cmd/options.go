@@ -547,4 +547,6 @@ type StudioOptions struct {
 	AIModel string
 	// AIAPIKey is the API key for the AI provider (usually set via env).
 	AIAPIKey string
+	// AuthToken, when set, enables shared-secret authentication for the UI/API.
+	AuthToken string
 }

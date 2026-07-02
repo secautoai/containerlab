@@ -25,6 +25,7 @@ type Config struct {
 	AIBaseURL string
 	AIModel   string
 	AIAPIKey  string
+	AuthToken string
 }
 
 // Run starts the ClabStudio HTTP server and blocks until the context is
@@ -41,7 +42,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Engine:  cfg.Engine,
 	})
 
-	handler := clabstudioapi.New(cfg.Engine, agent)
+	handler := clabstudioapi.New(cfg.Engine, agent, cfg.AuthToken)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
@@ -58,7 +59,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Address,
-		Handler:           recoverMiddleware(logMiddleware(mux)),
+		Handler:           recoverMiddleware(logMiddleware(handler.AuthMiddleware(mux))),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

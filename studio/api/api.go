@@ -20,11 +20,13 @@ type Handler struct {
 	Engine engine.Engine
 	// AI is the Copilot agent. It may be nil when AI is not wired up.
 	AI *ai.Agent
+	// AuthToken, when non-empty, enables shared-secret authentication.
+	AuthToken string
 }
 
 // New creates an API handler.
-func New(eng engine.Engine, agent *ai.Agent) *Handler {
-	return &Handler{Engine: eng, AI: agent}
+func New(eng engine.Engine, agent *ai.Agent, authToken string) *Handler {
+	return &Handler{Engine: eng, AI: agent, AuthToken: authToken}
 }
 
 // RegisterRoutes mounts all REST routes on the provided mux (Go 1.22 pattern
@@ -32,6 +34,8 @@ func New(eng engine.Engine, agent *ai.Agent) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/capabilities", h.capabilities)
+	mux.HandleFunc("POST /api/login", h.login)
+	mux.HandleFunc("POST /api/logout", h.logout)
 	mux.HandleFunc("GET /api/catalog", h.catalog)
 	mux.HandleFunc("GET /api/templates", h.templates)
 	mux.HandleFunc("POST /api/labs/from-template", h.labFromTemplate)
