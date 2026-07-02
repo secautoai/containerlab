@@ -81,6 +81,19 @@ func TestGenerateLeafSpine(t *testing.T) {
 	}
 }
 
+func TestGenerateLeafSpinePlural(t *testing.T) {
+	// "leaves" (plural) must be parsed correctly (regression: v != f).
+	res, _ := Generate("clos fabric with 4 leaves and 2 spines using arista", "")
+
+	if len(res.Graph.Nodes) != 6 {
+		t.Fatalf("expected 6 nodes (4 leaves + 2 spines), got %d", len(res.Graph.Nodes))
+	}
+	// 4 leaves x 2 spines = 8 links
+	if len(res.Graph.Links) != 8 {
+		t.Fatalf("expected 8 links, got %d", len(res.Graph.Links))
+	}
+}
+
 func TestGenerateTriangle(t *testing.T) {
 	res, _ := Generate("ospf triangle", "")
 	if len(res.Graph.Nodes) != 3 || len(res.Graph.Links) != 3 {

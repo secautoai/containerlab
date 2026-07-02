@@ -130,7 +130,7 @@ func detectKind(p string) string {
 
 func detectShape(p string) topoShape {
 	switch {
-	case strings.Contains(p, "leaf") || strings.Contains(p, "spine") || strings.Contains(p, "clos") || strings.Contains(p, "fabric"):
+	case strings.Contains(p, "leaf") || strings.Contains(p, "leaves") || strings.Contains(p, "spine") || strings.Contains(p, "clos") || strings.Contains(p, "fabric"):
 		return shapeLeafSpine
 	case strings.Contains(p, "ring"):
 		return shapeRing
@@ -180,13 +180,14 @@ func detectCount(p string, shape topoShape) int {
 func detectLeafSpine(p string) (leaves, spines int) {
 	leaves, spines = 2, 2
 
-	if m := regexp.MustCompile(`(\d+)\s*leaf`).FindStringSubmatch(p); len(m) == 2 {
+	// Match singular/plural: "leaf", "leafs", "leaves".
+	if m := regexp.MustCompile(`(\d+)\s*lea(?:f|fs|ves)`).FindStringSubmatch(p); len(m) == 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil {
 			leaves = clampCount(n)
 		}
 	}
 
-	if m := regexp.MustCompile(`(\d+)\s*spine`).FindStringSubmatch(p); len(m) == 2 {
+	if m := regexp.MustCompile(`(\d+)\s*spines?`).FindStringSubmatch(p); len(m) == 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil {
 			spines = clampCount(n)
 		}
