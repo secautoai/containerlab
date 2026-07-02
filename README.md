@@ -102,6 +102,8 @@ This short clip briefly demonstrates containerlab features and explains its purp
     We do not let our users guess by making a complete, concise and clean [documentation](https://containerlab.dev).
 * **Lab catalog**  
    The "most-wanted" lab topologies are [documented and included](https://containerlab.dev/lab-examples/lab-examples/) with containerlab installation. Based on this cherry-picked selection you can start crafting the labs answering your needs.
+* **ClabStudio: modern web UI + AI Copilot**  
+   Launch a browser-based network simulator with `containerlab studio`: a drag-and-drop topology canvas, one-click deploy/destroy, in-browser node consoles, end-to-end reachability validation, and an AI Copilot that turns a plain-English prompt into a ready-to-deploy topology. See the [`studio` command docs](https://containerlab.dev/cmd/studio/).
 
 ## Use cases
 

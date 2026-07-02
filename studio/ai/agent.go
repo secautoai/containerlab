@@ -224,4 +224,3 @@ Rules:
 - Give every node a distinct position on a grid (x,y in pixels, ~200px apart).
 - Every link connects two existing node names via distinct endpoints.
 - Keep it to at most 24 nodes.`
-
