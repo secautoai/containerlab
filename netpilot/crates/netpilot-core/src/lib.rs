@@ -13,5 +13,5 @@ pub mod template;
 pub use error::{CoreError, Result};
 pub use event::{Event, EventBus};
 pub use lab::*;
-pub use store::LabStore;
+pub use store::{LabStore, LabSummary};
 pub use template::*;

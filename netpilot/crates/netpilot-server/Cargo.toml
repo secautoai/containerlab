@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 netpilot-core = { path = "../netpilot-core" }
 netpilot-qemu = { path = "../netpilot-qemu" }
-netpilot-net = { path = "../netpilot-net" }
+netpilot-net = { version = "0.1.0", path = "../netpilot-net" }
 netpilot-ai = { path = "../netpilot-ai" }
 anyhow.workspace = true
 thiserror.workspace = true
@@ -30,6 +30,7 @@ tower-http.workspace = true
 futures.workspace = true
 zip.workspace = true
 quick-xml.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
