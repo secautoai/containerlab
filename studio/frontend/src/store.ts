@@ -35,6 +35,7 @@ interface StudioState {
 
   // ui
   theme: "dark" | "light";
+  searchQuery: string;
   toasts: Toast[];
   consoleNode?: string;
   copilotOpen: boolean;
@@ -61,6 +62,7 @@ interface StudioState {
   addLink: (link: GraphLink) => void;
   removeLink: (index: number) => void;
   selectNode: (name?: string) => void;
+  setSearch: (q: string) => void;
   undo: () => void;
   redo: () => void;
   deploy: () => Promise<void>;
@@ -134,6 +136,7 @@ export const useStore = create<StudioState>((set, get) => ({
   past: [],
   future: [],
   theme: getInitialTheme(),
+  searchQuery: "",
   toasts: [],
   copilotOpen: false,
   yamlEditorOpen: false,
@@ -348,6 +351,7 @@ export const useStore = create<StudioState>((set, get) => ({
   },
 
   selectNode: (name) => set({ selectedNode: name }),
+  setSearch: (q) => set({ searchQuery: q }),
 
   checkGraph: async () => {
     const g = get().graph;

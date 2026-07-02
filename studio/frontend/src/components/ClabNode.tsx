@@ -5,6 +5,8 @@ import type { GraphNode } from "../api";
 export interface ClabNodeData extends Record<string, unknown> {
   node: GraphNode;
   running: boolean;
+  dimmed?: boolean;
+  matched?: boolean;
 }
 
 // ClabNode renders a topology node with an icon, name, kind and connection
@@ -17,7 +19,12 @@ export default function ClabNode({ data, selected }: NodeProps) {
   const handleStyle = { width: 8, height: 8, background: "#00c9ff", border: "none" };
 
   return (
-    <div className={`clab-node ${selected ? "selected" : ""} ${d.running ? "running" : ""}`}>
+    <div
+      className={`clab-node ${selected ? "selected" : ""} ${d.running ? "running" : ""} ${
+        d.matched ? "ring-2 ring-amber-400" : ""
+      }`}
+      style={d.dimmed ? { opacity: 0.25 } : undefined}
+    >
       <Handle type="target" position={Position.Left} style={handleStyle} id="l" isConnectableStart />
       <Handle type="source" position={Position.Right} style={handleStyle} id="r" />
       <Handle type="source" position={Position.Top} style={handleStyle} id="t" />

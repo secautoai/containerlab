@@ -5,13 +5,16 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   type Node,
   type Edge,
   type Connection,
   type NodeChange,
   useReactFlow,
 } from "@xyflow/react";
+import { Search } from "lucide-react";
 import { useStore } from "../store";
+import { matchNodes } from "../search";
 import ClabNode, { type ClabNodeData } from "./ClabNode";
 
 const nodeTypes = { clab: ClabNode };
@@ -27,9 +30,17 @@ function CanvasInner() {
   const updateNode = useStore((s) => s.updateNode);
   const addNode = useStore((s) => s.addNode);
   const catalog = useStore((s) => s.catalog);
+  const searchQuery = useStore((s) => s.searchQuery);
+  const setSearch = useStore((s) => s.setSearch);
 
   const wrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+
+  const matched = useMemo(
+    () => (graph ? matchNodes(graph.nodes, searchQuery) : new Set<string>()),
+    [graph, searchQuery],
+  );
+  const searching = searchQuery.trim() !== "";
 
   const runningSet = useMemo(() => {
     const set = new Set<string>();
@@ -46,9 +57,14 @@ function CanvasInner() {
       type: "clab",
       position: n.position || { x: 0, y: 0 },
       selected: n.name === selectedNode,
-      data: { node: n, running: runningSet.has(n.name) },
+      data: {
+        node: n,
+        running: runningSet.has(n.name),
+        dimmed: searching && !matched.has(n.name),
+        matched: searching && matched.has(n.name),
+      },
     }));
-  }, [graph, selectedNode, runningSet]);
+  }, [graph, selectedNode, runningSet, searching, matched]);
 
   const edges: Edge[] = useMemo(() => {
     if (!graph) return [];
@@ -137,6 +153,20 @@ function CanvasInner() {
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={["Backspace", "Delete"]}
       >
+        <Panel position="top-left">
+          <div className="flex items-center gap-2 rounded-md border border-slate-300 bg-white/90 px-2 py-1 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
+            <Search size={14} className="text-slate-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="search nodes…"
+              className="w-40 bg-transparent text-sm outline-none"
+            />
+            {searching && (
+              <span className="text-xs text-slate-400">{matched.size} match{matched.size === 1 ? "" : "es"}</span>
+            )}
+          </div>
+        </Panel>
         <Background gap={18} color="#334155" />
         <Controls className="!bg-white dark:!bg-slate-800" />
         <MiniMap
