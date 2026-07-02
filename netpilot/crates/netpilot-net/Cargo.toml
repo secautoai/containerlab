@@ -1,0 +1,16 @@
+[package]
+name = "netpilot-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+netpilot-core = { path = "../netpilot-core" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
