@@ -379,6 +379,51 @@ func (e *ClabEngine) Exec(ctx context.Context, lab, node, cmd string) (*ExecResu
 	return res, nil
 }
 
+// ConsoleTarget resolves the real container name for a node and a default
+// interactive command derived from the node's kind.
+func (e *ClabEngine) ConsoleTarget(ctx context.Context, lab, node string) (*ConsoleTarget, error) {
+	g, err := e.GetLab(ctx, lab)
+	if err != nil {
+		return nil, err
+	}
+
+	var kind string
+
+	for _, n := range g.Nodes {
+		if n.Name == node {
+			kind = n.Kind
+			break
+		}
+	}
+
+	if kind == "" {
+		return nil, fmt.Errorf("%w: node %q in lab %q", ErrNotFound, node, lab)
+	}
+
+	target := &ConsoleTarget{
+		// containerlab's default container naming convention.
+		Container: fmt.Sprintf("clab-%s-%s", lab, node),
+		Cmd:       ConsoleCommandForKind(kind),
+	}
+
+	// Prefer the authoritative container name from the runtime when reachable.
+	clab, cerr := e.baseCLab(e.runtime)
+	if cerr == nil {
+		containers, lerr := clab.ListContainers(ctx, clabcore.WithListLabName(lab))
+		if lerr == nil {
+			for i := range containers {
+				if containers[i].Labels[clabconstants.NodeName] == node &&
+					len(containers[i].Names) > 0 {
+					target.Container = containers[i].Names[0]
+					break
+				}
+			}
+		}
+	}
+
+	return target, nil
+}
+
 // validateLabName ensures a lab name is safe for filesystem paths.
 func validateLabName(name string) error {
 	if name == "" {

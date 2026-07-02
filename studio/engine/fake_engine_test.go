@@ -94,6 +94,44 @@ func TestFakeEngineRuntimeDown(t *testing.T) {
 	}
 }
 
+func TestConsoleTarget(t *testing.T) {
+	ctx := context.Background()
+	e := NewFakeEngine(true)
+
+	g := sampleGraph("lab1")
+	g.Nodes[0].Kind = "nokia_srlinux"
+	_ = e.SaveLab(ctx, g)
+
+	target, err := e.ConsoleTarget(ctx, "lab1", "n1")
+	if err != nil {
+		t.Fatalf("console target: %v", err)
+	}
+
+	if target.Container != "clab-lab1-n1" {
+		t.Errorf("unexpected container name: %q", target.Container)
+	}
+
+	if len(target.Cmd) != 1 || target.Cmd[0] != "sr_cli" {
+		t.Errorf("expected sr_cli for srlinux, got %v", target.Cmd)
+	}
+}
+
+func TestConsoleCommandForKind(t *testing.T) {
+	cases := map[string]string{
+		"nokia_srlinux": "sr_cli",
+		"arista_ceos":   "Cli",
+		"linux":         "/bin/sh",
+		"unknown":       "/bin/sh",
+	}
+
+	for kind, want := range cases {
+		cmd := ConsoleCommandForKind(kind)
+		if len(cmd) == 0 || cmd[0] != want {
+			t.Errorf("kind %q: expected %q, got %v", kind, want, cmd)
+		}
+	}
+}
+
 func TestFakeEngineDeleteGuards(t *testing.T) {
 	ctx := context.Background()
 	e := NewFakeEngine(true)

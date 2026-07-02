@@ -216,3 +216,28 @@ func (e *FakeEngine) Exec(_ context.Context, lab, node, cmd string) (*ExecResult
 		Stdout:     fmt.Sprintf("fake output for %q on %s/%s", cmd, lab, node),
 	}, nil
 }
+
+// ConsoleTarget implements Engine.
+func (e *FakeEngine) ConsoleTarget(_ context.Context, lab, node string) (*ConsoleTarget, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	g, ok := e.labs[lab]
+	if !ok {
+		return nil, fmt.Errorf("%w: lab %q", ErrNotFound, lab)
+	}
+
+	var kind string
+
+	for _, n := range g.Nodes {
+		if n.Name == node {
+			kind = n.Kind
+			break
+		}
+	}
+
+	return &ConsoleTarget{
+		Container: fmt.Sprintf("clab-%s-%s", lab, node),
+		Cmd:       ConsoleCommandForKind(kind),
+	}, nil
+}

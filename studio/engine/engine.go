@@ -96,4 +96,34 @@ type Engine interface {
 
 	// Exec runs a command on a node and returns the result.
 	Exec(ctx context.Context, lab, node, cmd string) (*ExecResult, error)
+
+	// ConsoleTarget resolves the container name and default interactive command
+	// for a node so the server can attach a browser console to it.
+	ConsoleTarget(ctx context.Context, lab, node string) (*ConsoleTarget, error)
+}
+
+// ConsoleTarget describes how to open an interactive console into a node.
+type ConsoleTarget struct {
+	// Container is the runtime container name (e.g. clab-<lab>-<node>).
+	Container string `json:"container"`
+	// Cmd is the default interactive command (vendor CLI or shell).
+	Cmd []string `json:"cmd"`
+}
+
+// ConsoleCommandForKind returns a sensible default interactive command for a
+// containerlab kind. Network OSes get their native CLI; everything else falls
+// back to a POSIX shell (with bash preferred when present, handled at attach).
+func ConsoleCommandForKind(kind string) []string {
+	switch kind {
+	case "nokia_srlinux":
+		return []string{"sr_cli"}
+	case "arista_ceos":
+		return []string{"Cli"}
+	case "juniper_crpd":
+		return []string{"cli"}
+	case "cvx":
+		return []string{"bash"}
+	default:
+		return []string{"/bin/sh"}
+	}
 }
