@@ -80,6 +80,7 @@ impl NodeSupervisor {
         self.publish(spec.lab_id, spec.node_id, NodeState::Starting, None);
 
         std::fs::create_dir_all(&spec.run_dir)?;
+        std::fs::create_dir_all(&spec.socket_dir)?;
         // Stale sockets from a previous run would make QEMU fail to bind.
         let _ = std::fs::remove_file(spec.qmp_socket());
         let _ = std::fs::remove_file(spec.console_socket());
@@ -252,6 +253,7 @@ mod tests {
             config_media: None,
             nics: vec![],
             run_dir: dir.to_path_buf(),
+            socket_dir: dir.to_path_buf(),
             kvm: false,
             vnc_display: None,
         }

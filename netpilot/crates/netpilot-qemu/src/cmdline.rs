@@ -38,8 +38,11 @@ pub struct NodeBootSpec {
     pub config_media: Option<ConfigMedia>,
     /// Datapath wiring per interface index (from the UDP switch).
     pub nics: Vec<NicWiring>,
-    /// Directory for qmp/console sockets.
+    /// Directory for runtime artifacts (qemu.log). May be a deep path.
     pub run_dir: PathBuf,
+    /// Directory for qmp/console unix sockets. MUST be short: sun_path is
+    /// limited to 107 bytes (see [`socket_dir_for`]).
+    pub socket_dir: PathBuf,
     /// Use KVM acceleration.
     pub kvm: bool,
     /// VNC display number when console is VNC (port = 5900 + display).
@@ -66,11 +69,11 @@ impl NodeBootSpec {
     }
 
     pub fn qmp_socket(&self) -> PathBuf {
-        self.run_dir.join("qmp.sock")
+        self.socket_dir.join("qmp.sock")
     }
 
     pub fn console_socket(&self) -> PathBuf {
-        self.run_dir.join("console.sock")
+        self.socket_dir.join("console.sock")
     }
 
     /// Build the full argument list (excluding argv[0]).
@@ -234,6 +237,14 @@ pub fn overlay_path(node_dir: &Path) -> PathBuf {
     node_dir.join("disk.qcow2")
 }
 
+/// Short, stable per-node socket directory. Unix socket paths are limited
+/// to ~107 bytes, so these live under the system temp dir rather than the
+/// (potentially deep) data directory.
+pub fn socket_dir_for(node_id: Uuid) -> PathBuf {
+    let short = &node_id.simple().to_string()[..12];
+    std::env::temp_dir().join("netpilot").join(short)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,7 +272,8 @@ mod tests {
                     qemu_port: 46001 + (i as u16) * 2,
                 })
                 .collect(),
-            run_dir: "/run/np/y".into(),
+            run_dir: "/data/labs/x/nodes/y".into(),
+            socket_dir: "/run/np/y".into(),
             kvm: false,
             vnc_display: None,
         }

@@ -179,6 +179,7 @@ impl AppState {
             config_media,
             nics,
             run_dir: node_dir,
+            socket_dir: netpilot_qemu::socket_dir_for(node_id),
             kvm: self.kvm(),
             vnc_display: match node.console {
                 ConsoleKind::Vnc => Some(vnc_display_for(node_id)),
