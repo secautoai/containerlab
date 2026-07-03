@@ -1,0 +1,185 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+@import '@xterm/xterm/css/xterm.css';
+
+/* Strato palette (from strato/src/theme.css) mapped onto the ink scale so
+   every existing component picks it up, plus the raw CSS variables the
+   Strato-ported markup uses directly. */
+@theme {
+  --color-ink-950: #0c0e11; /* --bg */
+  --color-ink-900: #111419; /* --panel */
+  --color-ink-850: #171b22; /* --panel2 */
+  --color-ink-800: #222834; /* --border */
+  --color-ink-700: #2f3846; /* --border2 */
+  --color-ink-600: #4a5566;
+  --color-ink-500: #6b7689;
+  --color-ink-400: #8a94a6; /* --muted */
+  --color-ink-300: #aab3c2;
+  --color-ink-200: #e9edf3; /* --text */
+  --color-accent-500: #38d1ba;
+  --color-accent-600: #23b09b;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Space Grotesk', 'IBM Plex Sans', sans-serif;
+}
+
+:root {
+  --bg: #0c0e11;
+  --panel: #111419;
+  --panel2: #171b22;
+  --border: #222834;
+  --border2: #2f3846;
+  --text: #e9edf3;
+  --muted: #8a94a6;
+  --accent: #38d1ba;
+  --accentSoft: rgba(56, 209, 186, 0.13);
+  --green: #3ecf8e;
+  --red: #f0655a;
+  --amber: #e8b348;
+  --violet: #a78bfa;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+/* React Flow dark theming */
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-edge-stroke-default: var(--border2);
+  --xy-edge-stroke-width-default: 1.6;
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-attribution-background-color-default: transparent;
+}
+.react-flow__attribution {
+  color: #333c4b;
+}
+.react-flow__controls {
+  box-shadow: var(--shadow);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.react-flow__controls button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  fill: var(--muted);
+}
+.react-flow__controls button:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+.react-flow__minimap {
+  background: var(--panel) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.react-flow__handle {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  opacity: 0;
+  transition: opacity 0.12s;
+  cursor: crosshair;
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle {
+  opacity: 1;
+}
+.react-flow__edge-text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+.react-flow__edge-textbg {
+  fill: var(--panel);
+}
+
+/* keyframes from the Strato design */
+@keyframes popIn {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes fadeUp {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes spinDot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+/* hover/focus states from the design's style-hover / style-focus attributes */
+.chip:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+  color: var(--text) !important;
+}
+.chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.iconbtn:hover:not(:disabled) {
+  background: var(--border) !important;
+  color: var(--text) !important;
+}
+.composer:focus-within {
+  border-color: var(--accent) !important;
+}
+.nodecard:hover {
+  border-color: var(--accent) !important;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+}
+.btn-danger:hover {
+  color: var(--red) !important;
+  border-color: var(--red) !important;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
