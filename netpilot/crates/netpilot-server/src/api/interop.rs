@@ -613,6 +613,7 @@ mod clab {
 /// containerlab kind → NetPilot template (QEMU equivalents where they exist).
 fn map_clab_kind(kind: &str) -> &'static str {
     match kind {
+        k if k.contains("srl") || k.contains("nokia") => "srlinux",
         k if k.contains("vr-csr") || k.contains("cisco_csr") => "csr1000v",
         k if k.contains("vr-veos") || k.contains("ceos") || k.contains("arista") => "veos",
         k if k.contains("vr-vsrx") || k.contains("crpd") || k.contains("juniper") => "vsrx",
@@ -766,6 +767,8 @@ topology:
         assert_eq!(lab.links.len(), 1);
         let eos = lab.nodes.values().find(|n| n.name == "eos1").unwrap();
         assert_eq!(eos.template, "veos");
+        let srl = lab.nodes.values().find(|n| n.name == "srl1").unwrap();
+        assert_eq!(srl.template, "srlinux");
     }
 
     #[test]
