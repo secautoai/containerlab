@@ -97,7 +97,7 @@ Legend: [x] done · [~] partial · [ ] planned
 ## Phase 8 — Hardening & scale
 - [ ] Multi-server workers (satellite model)
 - [ ] Real-time collaborative editing (CRDT)
-- [ ] Docker container nodes alongside QEMU (containerlab bridge)
+- [x] Docker container nodes alongside QEMU (SR Linux, cEOS, cRPD)
 - [ ] VS Code extension speaking the same API
 - [x] Image upload UI (streamed, validated) — community index planned
 - [ ] Lab store (community topologies with tasks/grading)
@@ -107,6 +107,8 @@ Legend: [x] done · [~] partial · [ ] planned
 |---|---|
 | QEMU nodes, per-node overlay, wipe | Phase 2 ✅ |
 | IOL / dynamips backends | Out of scope (licensing; QEMU covers modern images) |
+| Native FRR / Linux nodes (no image) | ✅ netns backend |
+| Container nodes (SR Linux / cEOS / cRPD) | ✅ docker backend |
 | Docker nodes (Pro) | Phase 8 |
 | Folders, lab files, lock | Folders ✅, lock ✅ |
 | Startup configs + config sets | Configs ✅; named sets + active-set boot ✅ |

@@ -66,6 +66,30 @@ exposing 10 tools to external agents.
     (sch_netem module absent in this container's kernel).
 12. PDEATHSIG verified: SIGKILL of the server killed all QEMU children.
 
+
+## 2026-07-03 — device support + protocol labs + agentic UI
+
+Native/container node kinds (no-image + BYOI), OpenRouter provider, agentic UI.
+
+| Item | Status |
+|---|---|
+| Native FRR node kind (netns, full routing suite, no image) | ✅ verified |
+| Linux endpoint node kind (netns, no image) | ✅ verified (used as EVPN hosts) |
+| Container node kind (docker, veth wiring) | ✅ verified (2 containers, ping 0% loss) |
+| SR Linux built-in (auto-pull ghcr.io) | ✅ template + pull path (ghcr blocked in CI; works on open networks) |
+| cEOS/cRPD BYOI (docker load/import upload) | ✅ endpoint + template |
+| OSPF multi-area lab | ✅ verified (inter-area route + ping) |
+| BGP peering lab | ✅ verified (route + cross-AS ping) |
+| VXLAN EVPN lab | ✅ verified (EVPN Established, VNI 100, host↔host ping over tunnel) |
+| MPLS L3VPN lab | ✅ control plane (OSPF+LDP labels); VPNv4/dataplane need kernel mpls_router |
+| OpenRouter / OpenAI-compatible provider | ✅ verified (agent built+booted+pinged a real FRR lab via the OpenAI path) |
+| Agentic UI (tool cards, timeline, model chip) | ✅ done |
+
+Live-found + fixed this round: docker's `br_netfilter` FORWARD-DROP ate bridged
+unicast (OSPF hellos flooded but ping died) → disable bridge-nf-call-iptables;
+FRR daemons survive `ip netns del` → explicit kill of namespace pids on
+start/stop; console quiet-window widened so multi-second commands (ping) return.
+
 ## Known gaps (tracked in ROADMAP)
 
 - Rootless mode cannot provide NAT/cloud host connectivity (use
