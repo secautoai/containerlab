@@ -2,7 +2,7 @@
 // controls), agent chat on the left, topology canvas in the middle with a
 // floating tool rail, inspector on the right.
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import {
   BookOpen,
   Boxes,
@@ -27,10 +27,24 @@ const grotesk = "'Space Grotesk', 'IBM Plex Sans', sans-serif"
 
 export default function LabEditor() {
   const lab = useStore((s) => s.lab)
-  const states = useStore((s) => s.states)
   const system = useStore((s) => s.system)
   const agentBusy = useStore((s) => s.agentBusy)
-  const agentItems = useStore((s) => s.agentItems)
+  // Scalar selectors: agent/tool events and node_state bursts re-render this
+  // shell (and the canvas host below it) only when the derived value changes.
+  const runningCount = useStore(
+    (s) => Object.values(s.states).filter((st) => st === 'running').length,
+  )
+  const anyRunning = useStore(
+    (s) => Object.values(s.states).some((st) => st === 'running' || st === 'starting'),
+  )
+  const workingOn = useStore((s) => {
+    if (!s.agentBusy) return null
+    for (let i = s.agentItems.length - 1; i >= 0; i--) {
+      const it = s.agentItems[i]
+      if (it.kind === 'tool' && it.output === undefined) return toolLabel(it.name, it.input)
+    }
+    return 'Agent is thinking…'
+  })
   const openDashboard = useStore((s) => s.openDashboard)
   const refreshLab = useStore((s) => s.refreshLab)
   const setInspectorTab = useStore((s) => s.setInspectorTab)
@@ -57,16 +71,6 @@ export default function LabEditor() {
     else if (useStore.getState().inspectorTab === 'details') setInspectorTab('console')
   }
 
-  // Toast: what the agent is doing right now (last pending tool call).
-  const workingOn = useMemo(() => {
-    if (!agentBusy) return null
-    for (let i = agentItems.length - 1; i >= 0; i--) {
-      const it = agentItems[i]
-      if (it.kind === 'tool' && it.output === undefined) return toolLabel(it.name, it.input)
-    }
-    return 'Agent is thinking…'
-  }, [agentBusy, agentItems])
-
   if (!lab) {
     return (
       <div className="flex h-full items-center justify-center text-ink-400">
@@ -76,8 +80,6 @@ export default function LabEditor() {
   }
 
   const nodeCount = Object.keys(lab.nodes).length
-  const runningCount = Object.values(states).filter((s) => s === 'running').length
-  const anyRunning = Object.values(states).some((s) => s === 'running' || s === 'starting')
 
   const statusColor = agentBusy ? 'var(--accent)' : anyRunning ? 'var(--green)' : 'var(--muted)'
   const statusLabel = agentBusy ? 'Agent working' : anyRunning ? 'Lab running' : 'Idle'

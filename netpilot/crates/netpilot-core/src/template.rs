@@ -407,7 +407,25 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
                 config_delivery: ConfigDelivery::CloudInit,
                 ..Default::default()
             },
-            "Any cloud image (Ubuntu/Debian/Alpine qcow2). Uses cloud-init for user/config.",
+            "Any cloud image (Ubuntu/Debian/Alpine qcow2), configured via cloud-init. \
+             By default the serial console auto-logs-in as root and SSH accepts \
+             root / netpilot. Bare shell commands in the startup config run at \
+             boot alongside those defaults; a full #cloud-config (or #!script) \
+             replaces them entirely.",
+        ),
+        t(
+            "openwrt",
+            "OpenWrt",
+            "Open Source",
+            "router",
+            1,
+            256,
+            4,
+            "eth{i}",
+            QemuSpec::default(),
+            "OpenWrt x86-64 (convert the ext4-combined image to qcow2). Serial \
+             console, root with no password. eth0 is the LAN bridge (192.168.1.1, \
+             DHCP server on), eth1 is WAN (DHCP client). Configure with uci/LuCI.",
         ),
         t(
             "vyos",

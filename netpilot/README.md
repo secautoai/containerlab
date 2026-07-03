@@ -92,9 +92,15 @@ overlays):
 
 `GET /api/templates` lists the built-in template catalog (Cisco IOSv/IOSvL2/
 CSR1000v/Cat8000v/XRv9k, Arista vEOS, Juniper vSRX/vJunos-switch, Fortinet,
-Palo Alto, MikroTik CHR, VyOS, FRR, generic Linux with cloud-init). Add your
-own as YAML files under `<data>/templates/` — same schema, overrides built-ins
-by id, including raw `extra_args` for exotic platforms.
+Palo Alto, MikroTik CHR, VyOS, OpenWrt, FRR, generic Linux with cloud-init).
+Add your own as YAML files under `<data>/templates/` — same schema, overrides
+built-ins by id, including raw `extra_args` for exotic platforms.
+
+**Default logins.** `linux` (cloud-init) nodes auto-login root on the serial
+console and accept **root / netpilot** over SSH; a startup config that is a
+full `#cloud-config` (or `#!` script) replaces those defaults. OpenWrt uses
+its stock root-without-password console. NOS images keep their vendor
+defaults (VyOS `vyos/vyos`, cEOS `admin`, …).
 
 ## Startup configs
 

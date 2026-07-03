@@ -51,18 +51,24 @@ const stateDot = (state: string): { color: string; anim: string } => ({
   anim: state === 'starting' || state === 'stopping' ? pulse : 'none',
 })
 
+// Decorative packet animation honors the OS accessibility setting.
+const reducedMotion =
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 // ---------- custom node renderers ----------
 
-function DeviceNode({ data, selected }: NodeProps) {
+function DeviceNode({ id, data, selected }: NodeProps) {
   const d = data as {
     name: string
     icon: string
     templateName: string
     vendor: string
-    state: string
   }
+  // Each card subscribes to its own runtime state, so a node_state event
+  // re-renders one card instead of rebuilding the whole graph.
+  const state = useStore((s) => s.states[id] ?? 'stopped')
   const h = hueOf(d.vendor)
-  const dot = stateDot(d.state)
+  const dot = stateDot(state)
   return (
     <div style={{ animation: 'popIn .45s cubic-bezier(.2,1.2,.4,1)' }}>
       <div
@@ -211,7 +217,7 @@ function AnnotationNode({ data, selected }: NodeProps) {
 // ---------- Strato edge: straight line, subnet label, packet dot ----------
 
 function StratoEdge(props: EdgeProps) {
-  const { sourceX, sourceY, targetX, targetY } = props
+  const { source, target, sourceX, sourceY, targetX, targetY } = props
   const [path, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY })
   const data = props.data as
     | {
@@ -220,10 +226,19 @@ function StratoEdge(props: EdgeProps) {
         label?: string
         impaired?: boolean
         suspended?: boolean
-        active?: boolean
+        aIsNode?: boolean
+        bIsNode?: boolean
       }
     | undefined
   const down = !!data?.suspended
+  // Liveness is read here (a boolean selector) so node_state events flip
+  // only the affected edges instead of regenerating the edge array.
+  const active = useStore(
+    (s) =>
+      !down &&
+      (!data?.aIsNode || s.states[source] === 'running') &&
+      (!data?.bIsNode || s.states[target] === 'running'),
+  )
   const len = Math.hypot(targetX - sourceX, targetY - sourceY)
   const lerp = (t: number) => ({
     x: sourceX + (targetX - sourceX) * t,
@@ -259,7 +274,7 @@ function StratoEdge(props: EdgeProps) {
           />
         </g>
       )}
-      {!down && data?.active && (
+      {!down && active && !reducedMotion && (
         <circle r={2.8} fill="var(--accent)" style={{ pointerEvents: 'none' }}>
           <animateMotion
             dur={`${Math.max(len / 130, 0.8).toFixed(2)}s`}
@@ -321,11 +336,7 @@ function endpointNodeId(ep: Endpoint): string {
   return ep.kind === 'node' ? ep.node : ep.network
 }
 
-function buildGraph(
-  lab: LabView,
-  states: Record<string, string>,
-  templates: Template[],
-): { nodes: Node[]; edges: Edge[] } {
+function buildGraph(lab: LabView, templates: Template[]): { nodes: Node[]; edges: Edge[] } {
   const byId = new Map(templates.map((t) => [t.id, t]))
   const nodes: Node[] = []
   for (const ann of Object.values(lab.annotations)) {
@@ -356,7 +367,6 @@ function buildGraph(
         icon: n.icon,
         templateName: t?.name ?? n.template,
         vendor: t?.vendor ?? '',
-        state: states[n.id] ?? 'stopped',
       },
     })
   }
@@ -368,7 +378,6 @@ function buildGraph(
       data: { name: net.name, netKind: net.kind },
     })
   }
-  const running = (id: string) => (states[id] ?? 'stopped') === 'running'
   const edges: Edge[] = Object.values(lab.links).map((l) => {
     const label = (ep: Endpoint): string | undefined => {
       if (ep.kind !== 'node') return undefined
@@ -376,7 +385,6 @@ function buildGraph(
       if (!node) return undefined
       return ifaceName(byId.get(node.template)?.iface_pattern ?? 'eth{i}', ep.iface)
     }
-    const epActive = (ep: Endpoint) => (ep.kind === 'node' ? running(ep.node) : true)
     return {
       id: l.id,
       type: 'strato',
@@ -387,7 +395,8 @@ function buildGraph(
         bLabel: label(l.b),
         label: l.label,
         suspended: !!l.suspended,
-        active: epActive(l.a) && epActive(l.b) && !l.suspended,
+        aIsNode: l.a.kind === 'node',
+        bIsNode: l.b.kind === 'node',
         impaired:
           !!l.impairment &&
           (l.impairment.delay_ms > 0 ||
@@ -420,18 +429,20 @@ function freeIface(lab: LabView, nodeId: string): number | null {
 
 function CanvasInner({ onSelect }: CanvasProps) {
   const lab = useStore((s) => s.lab)
-  const states = useStore((s) => s.states)
   const templates = useStore((s) => s.templates)
   const refreshLab = useStore((s) => s.refreshLab)
   const openConsole = useStore((s) => s.openConsole)
   const pushLog = useStore((s) => s.pushLog)
+  // Narrow subscriptions: node_state events must not rebuild the graph.
+  const anyRunning = useStore((s) => Object.values(s.states).some((st) => st === 'running'))
   const { screenToFlowPosition } = useReactFlow()
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const menuState = useStore((s) => (menu ? (s.states[menu.nodeId] ?? 'stopped') : 'stopped'))
   const wrapper = useRef<HTMLDivElement>(null)
 
   const { nodes, edges } = useMemo(
-    () => (lab ? buildGraph(lab, states, templates) : { nodes: [], edges: [] }),
-    [lab, states, templates],
+    () => (lab ? buildGraph(lab, templates) : { nodes: [], edges: [] }),
+    [lab, templates],
   )
 
   const act = useCallback(
@@ -490,10 +501,8 @@ function CanvasInner({ onSelect }: CanvasProps) {
   if (!lab) return null
 
   const menuNode = menu ? lab.nodes[menu.nodeId] : null
-  const menuState = menuNode ? (states[menuNode.id] ?? 'stopped') : 'stopped'
   const nodeCount = Object.keys(lab.nodes).length
   const linkCount = Object.keys(lab.links).length
-  const anyRunning = Object.values(states).some((s) => s === 'running')
 
   return (
     <div
@@ -535,7 +544,7 @@ function CanvasInner({ onSelect }: CanvasProps) {
         onNodeDoubleClick={(_, node) => {
           const n = lab.nodes[node.id]
           if (!n) return
-          const st = states[node.id] ?? 'stopped'
+          const st = useStore.getState().states[node.id] ?? 'stopped'
           if (st === 'running' || st === 'starting') openConsole(n.id, n.name)
           else pushLog('info', `${n.name} is not running — start it to open its console`)
         }}

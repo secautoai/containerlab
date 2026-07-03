@@ -221,17 +221,78 @@ pub fn build_fat_disk(label: &str, files: &[(&str, &[u8])]) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// Default console/SSH login provisioned on cloud-init nodes whenever the
+/// startup config doesn't take over the whole user-data — stock cloud
+/// images (Alpine/Ubuntu/Debian "nocloud") ship with locked passwords, so
+/// without this a bare node's console is unusable.
+pub const DEFAULT_LOGIN_USER: &str = "root";
+pub const DEFAULT_LOGIN_PASSWORD: &str = "netpilot";
+
+fn default_credentials_yaml() -> String {
+    format!(
+        "ssh_pwauth: true\nchpasswd:\n  expire: false\n  users:\n    - name: {DEFAULT_LOGIN_USER}\n      password: {DEFAULT_LOGIN_PASSWORD}\n      type: text\n"
+    )
+}
+
+/// Auto-login root on the serial console (BusyBox inittab and systemd getty
+/// variants) so consoles — and the agent's run_command / the exec API, which
+/// drive the console directly — work without a login dance. The password
+/// still applies to SSH and su.
+const SERIAL_AUTOLOGIN: &str = r#"if [ -f /etc/inittab ]; then
+  # BusyBox init (Alpine): getty has no autologin flag; login -f does.
+  sed -i 's|^ttyS0::respawn:.*|ttyS0::respawn:/bin/login -f root|' /etc/inittab
+  grep -q '^ttyS0::respawn' /etc/inittab || echo 'ttyS0::respawn:/bin/login -f root' >> /etc/inittab
+  kill -HUP 1
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+  printf '[Service]\nExecStart=\nExecStart=-/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 %%I $TERM\n' > /etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl restart serial-getty@ttyS0.service 2>/dev/null || true
+fi"#;
+
+fn push_runcmd_block(out: &mut String, script: &str) {
+    out.push_str("  - |\n");
+    for line in script.lines() {
+        out.push_str("    ");
+        out.push_str(line);
+        out.push('\n');
+    }
+}
+
+/// Turn a node's startup config into cloud-init user-data.
+///
+/// * `#cloud-config` / `#!...` configs own the whole user-data (credentials
+///   included — set your own).
+/// * Bare text becomes a boot-time shell script (`runcmd`) alongside the
+///   default credentials and serial autologin.
+/// * No config at all still provisions credentials + autologin.
+fn cloudinit_user_data(config: &str) -> String {
+    if config.starts_with("#cloud-config") || config.starts_with("#!") {
+        return config.to_string();
+    }
+    let mut out = format!("#cloud-config\n{}runcmd:\n", default_credentials_yaml());
+    push_runcmd_block(&mut out, SERIAL_AUTOLOGIN);
+    if !config.trim().is_empty() {
+        push_runcmd_block(&mut out, config);
+    }
+    out
+}
+
 /// Produce the config media for a node according to its template's delivery
 /// mechanism. Returns what to attach, or None when the template takes no
-/// automated config (or no config was set).
+/// automated config (or no config was set). Cloud-init nodes always get a
+/// seed so the default credentials are provisioned even without a config.
 pub fn build_config_media(
     delivery: &ConfigDelivery,
     node_name: &str,
     startup_config: Option<&str>,
     out_dir: &Path,
 ) -> Result<Option<ConfigMedia>> {
-    let Some(config) = startup_config else {
-        return Ok(None);
+    let config = match startup_config {
+        Some(c) => c,
+        None if matches!(delivery, ConfigDelivery::CloudInit) => "",
+        None => return Ok(None),
     };
     std::fs::create_dir_all(out_dir)?;
 
@@ -250,12 +311,7 @@ pub fn build_config_media(
             Ok(Some(ConfigMedia::Disk(path)))
         }
         ConfigDelivery::CloudInit => {
-            let user_data = if config.starts_with("#cloud-config") || config.starts_with("#!") {
-                config.to_string()
-            } else {
-                // Bare text: treat as a shell provisioning script.
-                format!("#!/bin/sh\n{config}\n")
-            };
+            let user_data = cloudinit_user_data(config);
             let meta_data = format!("instance-id: {node_name}\nlocal-hostname: {node_name}\n");
             let iso = build_iso(
                 "cidata",
@@ -326,14 +382,40 @@ mod tests {
     }
 
     #[test]
+    fn cloudinit_user_data_shapes() {
+        // No config: default credentials + serial autologin.
+        let d = cloudinit_user_data("");
+        assert!(d.starts_with("#cloud-config"));
+        assert!(d.contains("password: netpilot"));
+        assert!(d.contains("--autologin root"));
+        assert!(d.contains("/bin/login -f root"));
+        // Bare text: credentials + autologin + the script as a second entry.
+        let d = cloudinit_user_data("ip addr add 10.0.0.1/24 dev eth0\nip link set eth0 up");
+        assert!(d.contains("password: netpilot"));
+        assert!(d.contains("  - |\n    ip addr add 10.0.0.1/24 dev eth0\n    ip link set eth0 up\n"));
+        assert!(d.matches("  - |\n").count() == 2);
+        // Explicit cloud-config / shebang own the whole user-data.
+        assert_eq!(cloudinit_user_data("#cloud-config\nhostname: x\n"), "#cloud-config\nhostname: x\n");
+        assert_eq!(cloudinit_user_data("#!/bin/sh\necho hi\n"), "#!/bin/sh\necho hi\n");
+    }
+
+    #[test]
     fn media_dispatch() {
         let dir = tempfile::tempdir().unwrap();
-        // no config -> no media
-        assert!(
-            build_config_media(&ConfigDelivery::CloudInit, "h1", None, dir.path())
-                .unwrap()
-                .is_none()
-        );
+        // no config -> cloud-init still seeds default credentials
+        let m = build_config_media(&ConfigDelivery::CloudInit, "h1", None, dir.path())
+            .unwrap()
+            .unwrap();
+        assert!(matches!(m, ConfigMedia::Cdrom(_)));
+        // ...but config-less non-cloud-init templates get no media
+        assert!(build_config_media(
+            &ConfigDelivery::CdromIso { filename: "c.txt".into() },
+            "h1",
+            None,
+            dir.path()
+        )
+        .unwrap()
+        .is_none());
 
         let m = build_config_media(
             &ConfigDelivery::CdromIso {

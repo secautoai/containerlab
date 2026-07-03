@@ -477,9 +477,11 @@ export default function Inspector({
   const tab = useStore((s) => s.inspectorTab)
   const setTab = useStore((s) => s.setInspectorTab)
   const lab = useStore((s) => s.lab)
-  const consoles = useStore((s) => s.consoles)
-  const checks = useStore((s) => s.checks)
-  const sessions = useStore((s) => s.sessions)
+  // Badges subscribe to counts, not arrays — a session/check append must not
+  // re-render the whole inspector (and the open xterm) for a number change.
+  const consoleCount = useStore((s) => s.consoles.length)
+  const checkCount = useStore((s) => s.checks.length)
+  const sessionCount = useStore((s) => s.sessions.length)
 
   const configCount = useMemo(
     () => Object.values(lab?.nodes ?? {}).filter((n) => !!n.startup_config).length,
@@ -487,10 +489,10 @@ export default function Inspector({
   )
 
   const tabs: { key: InspectorTab; label: string; badge: number }[] = [
-    { key: 'console', label: 'Console', badge: consoles.length },
+    { key: 'console', label: 'Console', badge: consoleCount },
     { key: 'configs', label: 'Configs', badge: configCount },
-    { key: 'validation', label: 'Validation', badge: checks.length },
-    { key: 'sessions', label: 'Sessions', badge: sessions.length },
+    { key: 'validation', label: 'Validation', badge: checkCount },
+    { key: 'sessions', label: 'Sessions', badge: sessionCount },
   ]
   if (selection) tabs.push({ key: 'details', label: 'Details', badge: 0 })
   const shown: InspectorTab = tab === 'details' && !selection ? 'console' : tab
