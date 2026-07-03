@@ -20,6 +20,7 @@ const protoColor: Record<string, string> = {
   ARP: 'text-amber-400',
   OSPF: 'text-rose-400',
   IPv6: 'text-blue-400',
+  DNS: 'text-teal-300',
 }
 
 export default function PacketViewer({

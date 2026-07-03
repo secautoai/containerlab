@@ -87,6 +87,84 @@ fn mac(b: &[u8]) -> String {
         .join(":")
 }
 
+fn dns_type_name(t: u16) -> String {
+    match t {
+        1 => "A".into(),
+        2 => "NS".into(),
+        5 => "CNAME".into(),
+        6 => "SOA".into(),
+        12 => "PTR".into(),
+        15 => "MX".into(),
+        16 => "TXT".into(),
+        28 => "AAAA".into(),
+        43 => "DS".into(),
+        46 => "RRSIG".into(),
+        47 => "NSEC".into(),
+        48 => "DNSKEY".into(),
+        50 => "NSEC3".into(),
+        252 => "AXFR".into(),
+        255 => "ANY".into(),
+        other => format!("type{other}"),
+    }
+}
+
+/// Decode the header + first question of a DNS message (UDP port 53) into a
+/// one-line info: "query www.example.lab. A" / "response … NXDOMAIN (0 ans)".
+fn dns_info(msg: &[u8]) -> Option<String> {
+    if msg.len() < 12 {
+        return None;
+    }
+    let flags = u16::from_be_bytes([msg[2], msg[3]]);
+    let qd = u16::from_be_bytes([msg[4], msg[5]]);
+    let an = u16::from_be_bytes([msg[6], msg[7]]);
+    let mut name = String::new();
+    let mut off = 12usize;
+    if qd > 0 {
+        loop {
+            let len = *msg.get(off)? as usize;
+            if len == 0 {
+                off += 1;
+                break;
+            }
+            if len & 0xc0 == 0xc0 {
+                off += 2;
+                break;
+            }
+            for b in msg.get(off + 1..off + 1 + len)? {
+                name.push(if b.is_ascii_graphic() { *b as char } else { '?' });
+            }
+            name.push('.');
+            off += 1 + len;
+            if name.len() > 96 {
+                name.push('…');
+                break;
+            }
+        }
+    }
+    if name.is_empty() {
+        name = ".".into();
+    }
+    let qtype = if qd > 0 && off + 2 <= msg.len() {
+        u16::from_be_bytes([msg[off], msg[off + 1]])
+    } else {
+        0
+    };
+    let qt = dns_type_name(qtype);
+    if flags & 0x8000 == 0 {
+        Some(format!("query {name} {qt}"))
+    } else {
+        let rcode = match flags & 0x000f {
+            0 => "NOERROR".into(),
+            1 => "FORMERR".into(),
+            2 => "SERVFAIL".into(),
+            3 => "NXDOMAIN".into(),
+            5 => "REFUSED".into(),
+            r => format!("rcode{r}"),
+        };
+        Some(format!("response {name} {qt} {rcode} ({an} ans)"))
+    }
+}
+
 fn decode_pcap(data: &[u8], max: usize) -> Vec<PacketSummary> {
     let mut out = Vec::new();
     if data.len() < 24 || &data[..4] != 0xa1b2c3d4u32.to_le_bytes().as_slice() {
@@ -188,10 +266,21 @@ fn decode_frame(ts: f64, len: u32, f: &[u8]) -> PacketSummary {
                     p.info = format!("{sport} → {dport} [{}]", fs.join(","));
                 }
                 17 if l4.len() >= 8 => {
-                    p.proto = "UDP".into();
                     let sport = u16::from_be_bytes([l4[0], l4[1]]);
                     let dport = u16::from_be_bytes([l4[2], l4[3]]);
-                    p.info = format!("{sport} → {dport}");
+                    let dns = (sport == 53 || dport == 53)
+                        .then(|| dns_info(&l4[8..]))
+                        .flatten();
+                    match dns {
+                        Some(info) => {
+                            p.proto = "DNS".into();
+                            p.info = info;
+                        }
+                        None => {
+                            p.proto = "UDP".into();
+                            p.info = format!("{sport} → {dport}");
+                        }
+                    }
                 }
                 89 => p.proto = "OSPF".into(),
                 other => p.proto = format!("ip/{other}"),
@@ -300,6 +389,52 @@ mod tests {
     fn garbage_is_safe() {
         assert!(decode_pcap(b"not a pcap", 10).is_empty());
         assert!(decode_pcap(&[], 10).is_empty());
+    }
+
+    fn dns_frame(sport: u16, dport: u16, dns: &[u8]) -> Vec<u8> {
+        let mut f = vec![0u8; 14];
+        f[12..14].copy_from_slice(&0x0800u16.to_be_bytes());
+        let mut ip = vec![0u8; 20];
+        ip[0] = 0x45;
+        ip[9] = 17; // udp
+        ip[12..16].copy_from_slice(&[10, 0, 1, 2]);
+        ip[16..20].copy_from_slice(&[10, 53, 53, 53]);
+        f.extend_from_slice(&ip);
+        let mut udp = vec![0u8; 8];
+        udp[0..2].copy_from_slice(&sport.to_be_bytes());
+        udp[2..4].copy_from_slice(&dport.to_be_bytes());
+        f.extend_from_slice(&udp);
+        f.extend_from_slice(dns);
+        f
+    }
+
+    #[test]
+    fn decodes_dns_query_and_response() {
+        // query www.example.lab. A (rd), then NXDOMAIN response
+        let mut q = vec![0, 1, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        for label in ["www", "example", "lab"] {
+            q.push(label.len() as u8);
+            q.extend_from_slice(label.as_bytes());
+        }
+        q.push(0);
+        q.extend_from_slice(&1u16.to_be_bytes()); // qtype A
+        q.extend_from_slice(&1u16.to_be_bytes()); // class IN
+        let mut r = q.clone();
+        r[2] = 0x81; // qr rd
+        r[3] = 0x83; // ra + rcode 3
+
+        let rows = decode_pcap(
+            &pcap_with(&[&dns_frame(40000, 53, &q), &dns_frame(53, 40000, &r)]),
+            10,
+        );
+        assert_eq!(rows[0].proto, "DNS");
+        assert_eq!(rows[0].info, "query www.example.lab. A");
+        assert_eq!(rows[1].proto, "DNS");
+        assert_eq!(rows[1].info, "response www.example.lab. A NXDOMAIN (0 ans)");
+        // non-53 UDP stays generic
+        let rows = decode_pcap(&pcap_with(&[&dns_frame(4000, 4001, &q)]), 10);
+        assert_eq!(rows[0].proto, "UDP");
+        assert_eq!(rows[0].info, "4000 → 4001");
     }
 }
 
