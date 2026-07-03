@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use netpilot_core::{
-    ConsoleKind, CoreError, Endpoint, Event, EventBus, ImageLibrary, Lab, LabStore, Link, Node,
-    NodeState, TemplateCatalog,
+    iface_name_from_pattern, ConsoleKind, CoreError, Endpoint, Event, EventBus, ImageLibrary, Lab,
+    LabStore, Link, Node, NodeKind, NodeState, TemplateCatalog,
 };
 use netpilot_net::{
     link_bridge, network_bridge, node_tap, Plumbing, PortId, SystemRunner, UdpSwitch,
@@ -40,6 +40,8 @@ pub struct AppState {
     pub images: Arc<ImageLibrary>,
     pub events: EventBus,
     pub supervisor: NodeSupervisor,
+    /// Runtime for netns/container node kinds.
+    pub native: crate::native::NativeSupervisor,
     /// Template catalog reloaded on demand (user templates may change).
     pub templates: Arc<RwLock<TemplateCatalog>>,
     /// One userspace switch per lab, created lazily.
@@ -79,6 +81,7 @@ impl AppState {
             store: Arc::new(store),
             images: Arc::new(images),
             events: events.clone(),
+            native: crate::native::NativeSupervisor::new(events.clone()),
             supervisor,
             templates: Arc::new(RwLock::new(templates)),
             switches: Arc::new(RwLock::new(HashMap::new())),
@@ -176,6 +179,49 @@ impl AppState {
         let templates = self.templates.read().await;
         let template = templates.get(&node.template)?.clone();
         drop(templates);
+
+        // Netns/container nodes take the native path (bridge datapath only).
+        if template.kind != NodeKind::Qemu {
+            if self.datapath != DatapathMode::Bridge {
+                return Err(ApiError::bad_request(format!(
+                    "'{}' nodes need the bridge datapath — start the server with --datapath bridge",
+                    template.id
+                )));
+            }
+            let spec = crate::native::NativeBootSpec {
+                lab_id,
+                node_id,
+                name: node.name.clone(),
+                interfaces: node.interfaces,
+                iface_names: (0..node.interfaces)
+                    .map(|i| iface_name_from_pattern(&template.iface_pattern, i))
+                    .collect(),
+                macs: (0..node.interfaces)
+                    .map(|i| netpilot_net::node_mac(lab_id, node_id, i))
+                    .collect(),
+                startup_config: node
+                    .effective_config(&lab.active_config_set)
+                    .map(|s| s.to_string()),
+                boot_script: node.overrides.get("boot_script").cloned(),
+                socket_dir: netpilot_qemu::socket_dir_for(node_id),
+                run_dir: self.store.node_dir(lab_id, node_id),
+            };
+            match template.kind {
+                NodeKind::Netns => {
+                    let service = template.netns.clone().unwrap_or_default();
+                    self.native.start_netns(spec, &service).await?;
+                }
+                NodeKind::Container => {
+                    let container = template.container.clone().ok_or_else(|| {
+                        ApiError::bad_request("container template missing container spec")
+                    })?;
+                    self.native.start_container(spec, &container).await?;
+                }
+                NodeKind::Qemu => unreachable!(),
+            }
+            self.rewire_lab(&lab).await?;
+            return Ok(());
+        }
 
         // Image: node.image names a version under images/<template>/.
         let image = self.images.find(&node.template, &node.image).map_err(|_| {
@@ -278,10 +324,11 @@ impl AppState {
     async fn apply_link_bridge(&self, lab: &Lab, link: &Link) -> ApiResult<()> {
         let tap_of = |node: &Uuid, iface: &u32| node_tap(lab.id, *node, *iface);
         let running = |node: &Uuid| {
-            let taps = &self.supervisor;
+            let qemu = &self.supervisor;
+            let native = &self.native;
             let lab_id = lab.id;
             let node = *node;
-            async move { taps.is_running(lab_id, node).await }
+            async move { qemu.is_running(lab_id, node).await || native.is_running(lab_id, node).await }
         };
 
         // Pick the bridge and member taps for this link.
@@ -437,8 +484,20 @@ impl AppState {
         }
     }
 
+    /// Console socket for a running node of any kind.
+    pub async fn console_socket(&self, lab: Uuid, node: Uuid) -> ApiResult<std::path::PathBuf> {
+        if let Ok(p) = self.supervisor.console_socket(lab, node).await {
+            return Ok(p);
+        }
+        self.native
+            .console_socket(lab, node)
+            .await
+            .ok_or_else(|| ApiError::conflict("node is not running"))
+    }
+
     pub async fn stop_node(&self, lab_id: Uuid, node_id: Uuid) -> ApiResult<()> {
         self.supervisor.stop(lab_id, node_id).await?;
+        self.native.stop(lab_id, node_id).await?;
         // Detach datapath ports so a later start re-attaches fresh.
         let lab = self.store.load(lab_id)?;
         if let Ok(node) = lab.node(node_id) {
@@ -501,6 +560,9 @@ impl AppState {
 
     pub async fn stop_lab(&self, lab_id: Uuid) -> ApiResult<()> {
         self.supervisor.stop_lab(lab_id).await?;
+        for node in self.native.running_nodes(lab_id).await {
+            self.native.stop(lab_id, node).await?;
+        }
         self.switches.write().await.remove(&lab_id);
         if self.datapath == DatapathMode::Bridge {
             // Best-effort teardown of this lab's bridges and taps.

@@ -11,6 +11,7 @@
 mod agent;
 mod api;
 mod error;
+mod native;
 mod state;
 
 use std::net::SocketAddr;

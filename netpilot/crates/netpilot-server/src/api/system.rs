@@ -9,24 +9,54 @@ use crate::error::ApiResult;
 use crate::state::AppState;
 
 #[derive(Serialize)]
+pub struct AiStatus {
+    pub available: bool,
+    pub provider: String,
+    pub model: String,
+}
+
+#[derive(Serialize)]
 pub struct SystemStatus {
     pub version: &'static str,
     pub kvm: bool,
     pub qemu_available: bool,
+    pub docker_available: bool,
+    pub frr_available: bool,
+    pub datapath: String,
     pub running_nodes: usize,
     pub labs: usize,
     pub images: usize,
+    pub ai: AiStatus,
 }
 
 pub async fn status(State(state): State<AppState>) -> ApiResult<Json<SystemStatus>> {
     let qemu_available = which("qemu-system-x86_64") || which("qemu-img");
+    let ai = match netpilot_ai::LlmClient::from_env() {
+        Ok(c) => AiStatus {
+            available: true,
+            provider: match c.provider {
+                netpilot_ai::Provider::Anthropic => "anthropic".into(),
+                netpilot_ai::Provider::OpenAiCompatible => "openai-compatible".into(),
+            },
+            model: c.model,
+        },
+        Err(_) => AiStatus {
+            available: false,
+            provider: String::new(),
+            model: String::new(),
+        },
+    };
     Ok(Json(SystemStatus {
         version: env!("CARGO_PKG_VERSION"),
         kvm: state.kvm(),
         qemu_available,
+        docker_available: which("docker"),
+        frr_available: std::path::Path::new("/usr/lib/frr/zebra").exists(),
+        datapath: format!("{:?}", state.datapath).to_lowercase(),
         running_nodes: state.supervisor.running_count().await,
         labs: state.store.list().map(|l| l.len()).unwrap_or(0),
         images: state.images.scan().map(|i| i.len()).unwrap_or(0),
+        ai,
     }))
 }
 
@@ -45,6 +75,11 @@ pub struct TemplateView {
 }
 
 pub async fn templates(State(state): State<AppState>) -> ApiResult<Json<Vec<TemplateView>>> {
+    // Hot-reload user templates so dropped-in YAML files appear without a
+    // server restart.
+    if let Ok(fresh) = netpilot_core::TemplateCatalog::load(Some(&state.store.templates_dir())) {
+        *state.templates.write().await = fresh;
+    }
     let images = state.images.scan().unwrap_or_default();
     let catalog = state.templates.read().await;
     let views = catalog
@@ -127,6 +162,98 @@ pub async fn upload_image(
         "template": template,
         "version": version,
         "filename": filename,
+        "size_bytes": written,
+    })))
+}
+
+/// BYOI: upload a docker image tarball for a container template.
+/// `PUT /api/images/docker/{template}` with the raw tar body. Accepts both
+/// `docker save` archives (docker load) and filesystem tarballs like
+/// Arista cEOS (docker import). The image is tagged as the template's
+/// configured reference (e.g. `ceos:byoi`).
+pub async fn upload_docker_image(
+    State(state): State<AppState>,
+    axum::extract::Path(template_id): axum::extract::Path<String>,
+    body: axum::body::Body,
+) -> ApiResult<Json<serde_json::Value>> {
+    use futures::TryStreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let catalog = state.templates.read().await;
+    let template = catalog.get(&template_id)?.clone();
+    drop(catalog);
+    let target = template
+        .container
+        .as_ref()
+        .map(|c| c.image.clone())
+        .ok_or_else(|| {
+            crate::error::ApiError::bad_request(format!(
+                "template '{template_id}' is not a container template"
+            ))
+        })?;
+
+    // Stream to a temp file (image tarballs are GB-scale).
+    let dir = state.images.root().join("docker");
+    tokio::fs::create_dir_all(&dir).await?;
+    let tmp = dir.join(format!(".{template_id}.upload.tar"));
+    let mut file = tokio::fs::File::create(&tmp).await?;
+    let mut stream = body.into_data_stream();
+    let mut written: u64 = 0;
+    while let Some(chunk) = stream
+        .try_next()
+        .await
+        .map_err(|e| crate::error::ApiError::bad_request(format!("upload aborted: {e}")))?
+    {
+        written += chunk.len() as u64;
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?;
+    drop(file);
+
+    let run = |args: Vec<String>| async move {
+        tokio::process::Command::new("docker")
+            .args(&args)
+            .output()
+            .await
+    };
+
+    // Try `docker load` (docker-save archives), fall back to `docker import`.
+    let load = run(vec!["load".into(), "-i".into(), tmp.display().to_string()]).await?;
+    let mut method = "load";
+    if load.status.success() {
+        // Re-tag whatever was loaded to the template's reference if needed.
+        let loaded = String::from_utf8_lossy(&load.stdout);
+        if let Some(name) = loaded.lines().find_map(|l| {
+            l.strip_prefix("Loaded image: ")
+                .map(|s| s.trim().to_string())
+        }) {
+            if name != target {
+                let _ = run(vec!["tag".into(), name, target.clone()]).await;
+            }
+        }
+    } else {
+        method = "import";
+        let import = run(vec![
+            "import".into(),
+            tmp.display().to_string(),
+            target.clone(),
+        ])
+        .await?;
+        if !import.status.success() {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(crate::error::ApiError::bad_request(format!(
+                "docker load failed ({}) and docker import failed ({})",
+                String::from_utf8_lossy(&load.stderr).trim(),
+                String::from_utf8_lossy(&import.stderr).trim()
+            )));
+        }
+    }
+    let _ = tokio::fs::remove_file(&tmp).await;
+
+    Ok(Json(serde_json::json!({
+        "template": template_id,
+        "image": target,
+        "method": method,
         "size_bytes": written,
     })))
 }

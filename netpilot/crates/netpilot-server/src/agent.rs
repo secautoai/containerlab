@@ -457,7 +457,6 @@ impl LabToolbox for StateToolbox {
         }
         let sock = self
             .state
-            .supervisor
             .console_socket(self.lab_id, n.id)
             .await
             .map_err(|_| format!("{node} is not running"))?;
@@ -496,7 +495,9 @@ pub async fn run_console_command(
     let mut output = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout_s.max(2) as u64);
     loop {
-        let quiet = tokio::time::sleep(Duration::from_millis(500));
+        // Wide enough to survive gaps between slow output lines (ping
+        // replies arrive a second apart).
+        let quiet = tokio::time::sleep(Duration::from_millis(1500));
         tokio::select! {
             r = stream.read(&mut scratch) => {
                 match r {

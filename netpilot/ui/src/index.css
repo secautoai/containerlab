@@ -73,6 +73,15 @@ body,
   fill: var(--color-ink-900);
 }
 
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

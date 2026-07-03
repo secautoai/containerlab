@@ -22,6 +22,8 @@ mod agent;
 mod api;
 #[path = "../src/error.rs"]
 mod error;
+#[path = "../src/native.rs"]
+mod native;
 #[path = "../src/state.rs"]
 mod state;
 

@@ -27,6 +27,10 @@ pub fn router(state: AppState) -> Router {
             "/api/images/{template}/{version}/{filename}",
             put(system::upload_image).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
         )
+        .route(
+            "/api/images/docker/{template}",
+            put(system::upload_docker_image).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
+        )
         .route("/api/labs/{lab}/stats", get(system::lab_stats))
         // labs
         .route("/api/labs", get(labs::list).post(labs::create))

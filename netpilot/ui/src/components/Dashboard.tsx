@@ -61,17 +61,30 @@ export default function Dashboard() {
               <p className="text-xs text-ink-400">network emulation, reimagined</p>
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-4 text-xs text-ink-400">
+          <div className="ml-auto flex items-center gap-3 text-xs text-ink-400">
             {system && (
               <>
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5" title="hardware acceleration">
                   <Cpu size={14} className={system.kvm ? 'text-emerald-400' : 'text-amber-400'} />
-                  {system.kvm ? 'KVM' : 'TCG (no /dev/kvm)'}
+                  {system.kvm ? 'KVM' : 'TCG'}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <Activity size={14} className={system.qemu_available ? 'text-emerald-400' : 'text-red-400'} />
-                  QEMU {system.qemu_available ? 'ready' : 'missing'}
+                <span
+                  className="flex items-center gap-1.5"
+                  title="VM nodes (QEMU) · container nodes (docker) · native FRR"
+                >
+                  <Activity size={14} />
+                  <span className={system.qemu_available ? 'text-emerald-400' : 'text-ink-600'}>qemu</span>
+                  <span className={system.docker_available ? 'text-emerald-400' : 'text-ink-600'}>docker</span>
+                  <span className={system.frr_available ? 'text-emerald-400' : 'text-ink-600'}>frr</span>
                 </span>
+                <span className="rounded bg-ink-800 px-1.5 py-0.5 text-[10px]" title="datapath mode">
+                  {system.datapath}
+                </span>
+                {system.ai.available && (
+                  <span className="rounded bg-accent-600/20 px-1.5 py-0.5 text-[10px] text-accent-500" title="AI agent model">
+                    {system.ai.model.split('/').pop()}
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5">
                   <Boxes size={14} /> {system.running_nodes} running
                 </span>

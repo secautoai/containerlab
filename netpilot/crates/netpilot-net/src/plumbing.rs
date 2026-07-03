@@ -42,6 +42,21 @@ impl Plumbing {
                 ],
             )
             .await;
+        // If docker (or anything else) loaded br_netfilter, bridged frames
+        // hit iptables FORWARD (default DROP with docker) and silently die.
+        // Lab bridges must be plain L2 — disable bridge-netfilter hooks.
+        let _ = self
+            .runner
+            .run(
+                "sysctl",
+                &[
+                    "-qw",
+                    "net.bridge.bridge-nf-call-iptables=0",
+                    "net.bridge.bridge-nf-call-ip6tables=0",
+                    "net.bridge.bridge-nf-call-arptables=0",
+                ],
+            )
+            .await;
         Ok(())
     }
 

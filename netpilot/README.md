@@ -35,16 +35,45 @@ cargo build --release
 # open http://127.0.0.1:8090
 ```
 
-Requirements on the lab host: `qemu-system-x86_64` + `qemu-img`
-(`apt install qemu-system-x86 qemu-utils`), `/dev/kvm` for hardware
-acceleration (TCG fallback works but is slow for big NOS images).
+Requirements on the lab host depend on which node kinds you use:
+`qemu-system-x86 qemu-utils` for VM nodes (`/dev/kvm` for speed),
+`frr` for the built-in native FRR routers, `docker` for container
+nodes (SR Linux, cEOS, cRPD). Native/container nodes need
+`--datapath bridge`.
 
-Enable the AI agent:
+Enable the AI agent (either provider):
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-…
-# optional: NETPILOT_AI_MODEL=claude-sonnet-5, ANTHROPIC_BASE_URL=…
+# OpenRouter (DeepSeek/Kimi/…, cheap):
+export OPENROUTER_API_KEY=sk-or-…          # default model deepseek/deepseek-chat
+# or Anthropic:
+export ANTHROPIC_API_KEY=sk-ant-…          # default model claude-sonnet-5
+# overrides: NETPILOT_AI_PROVIDER, NETPILOT_AI_MODEL, OPENAI_BASE_URL / ANTHROPIC_BASE_URL
 ```
+
+## Node kinds & device support
+
+Three execution backends, mixable in one lab:
+
+| Kind | Templates | Needs |
+|---|---|---|
+| **native** (netns) | **FRR** (full routing suite: OSPF/BGP/EVPN/LDP), **Linux endpoint** | nothing — no image at all |
+| **container** (docker) | **Nokia SR Linux** (auto-pulled from ghcr.io), **Arista cEOS** + **Juniper cRPD** (BYOI tarball upload) | docker |
+| **qemu** (VM) | Cisco IOSv/IOSvL2/CSR1000v/Cat8000v/XRv9k, Arista vEOS, Juniper vSRX/vJunos, PAN-OS, FortiGate, MikroTik CHR, VyOS, Linux clouds | qemu + image upload |
+
+BYOI container images: Images page → upload the vendor tarball; it is
+docker-loaded (`docker save` archives) or docker-imported (filesystem
+tarballs like cEOS-lab) and tagged for the template automatically.
+
+## Example labs (bundled, verified)
+
+`examples/` ships four labs built with the zero-image FRR nodes — import
+them from the dashboard:
+
+- **OSPF Multi-Area** — area 1 ⇢ ABRs in area 0 ⇢ area 2; inter-area routes + end-to-end ping ✔ verified
+- **BGP Peering** — AS 65001 ↔ transit AS 65100 ↔ AS 65002; loopback-to-loopback across AS path ✔ verified
+- **VXLAN EVPN** — spine RR + 2 leafs (BGP EVPN, VNI 100) + 2 hosts; L2 stretch ping through the tunnel ✔ verified
+- **MPLS L3VPN** — LDP core + MP-BGP VPNv4 between PEs (control plane ✔; forwarding needs kernel `mpls_router`)
 
 ## Images
 

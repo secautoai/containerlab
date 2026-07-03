@@ -47,6 +47,8 @@ pub struct CreateNode {
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub startup_config: Option<String>,
+    /// Advanced knobs (e.g. "boot_script" for netns nodes).
+    pub overrides: Option<BTreeMap<String, String>>,
 }
 
 pub async fn create(
@@ -120,7 +122,7 @@ pub async fn create(
                 startup_config: req.startup_config,
                 config_sets: BTreeMap::new(),
                 boot_delay_s: 0,
-                overrides: BTreeMap::new(),
+                overrides: req.overrides.unwrap_or_default(),
             };
             lab.nodes.insert(node.id, node.clone());
             Ok(node)
@@ -349,11 +351,7 @@ pub async fn exec(
     if req.command.trim().is_empty() {
         return Err(ApiError::bad_request("command must not be empty"));
     }
-    let sock = state
-        .supervisor
-        .console_socket(lab_id, node_id)
-        .await
-        .map_err(|_| ApiError::conflict("node is not running"))?;
+    let sock = state.console_socket(lab_id, node_id).await?;
     let output =
         crate::agent::run_console_command(&sock, &req.command, req.timeout_s.min(120)).await?;
     Ok(Json(serde_json::json!({ "output": output })))
@@ -381,11 +379,7 @@ pub async fn export_config(
         })?;
     drop(templates);
 
-    let sock = state
-        .supervisor
-        .console_socket(lab_id, node_id)
-        .await
-        .map_err(|_| ApiError::conflict("node is not running"))?;
+    let sock = state.console_socket(lab_id, node_id).await?;
     let raw = crate::agent::run_console_command(&sock, &command, 30).await?;
 
     // Strip the echoed command line and trailing prompt.

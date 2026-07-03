@@ -105,6 +105,49 @@ impl Default for QemuSpec {
     }
 }
 
+/// How nodes of a template are executed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeKind {
+    /// Full VM under QEMU (needs a disk image in the library).
+    #[default]
+    Qemu,
+    /// Docker container wired into the lab via veth pairs.
+    Container,
+    /// Native process(es) in a Linux network namespace — no image at all
+    /// (FRR from the host package, plain Linux shells).
+    Netns,
+}
+
+/// Recipe for container-kind templates.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContainerSpec {
+    /// Image reference (pulled on first start when absent locally, or
+    /// provided via BYOI docker-load upload).
+    pub image: String,
+    /// Optional command override.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cmd: Vec<String>,
+    /// Environment variables.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<String>,
+    /// Run privileged (most NOS containers require it).
+    #[serde(default)]
+    pub privileged: bool,
+    /// Command exec'd for the interactive console (default: sh).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub console_cmd: Option<String>,
+}
+
+/// Recipe for netns-kind templates.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NetnsSpec {
+    /// Service to launch inside the namespace: "frr" starts the FRR
+    /// daemon suite from the host package; empty = bare endpoint.
+    #[serde(default)]
+    pub service: String,
+}
+
 /// A device template: defaults for creating nodes plus the QEMU recipe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeTemplate {
@@ -132,9 +175,18 @@ pub struct NodeTemplate {
     pub iface_pattern: String,
     #[serde(default)]
     pub console: ConsoleKind,
+    /// Execution backend for this template.
+    #[serde(default)]
+    pub kind: NodeKind,
     /// QEMU boot recipe.
     #[serde(default)]
     pub qemu: QemuSpec,
+    /// Container recipe (kind = container).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container: Option<ContainerSpec>,
+    /// Netns recipe (kind = netns).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub netns: Option<NetnsSpec>,
     /// Free-form notes shown in the UI (image requirements, credentials...).
     #[serde(default)]
     pub notes: String,
@@ -188,12 +240,160 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
         max_interfaces: 32,
         iface_pattern: pattern.into(),
         console: ConsoleKind::Serial,
+        kind: NodeKind::Qemu,
         qemu,
+        container: None,
+        netns: None,
+        notes: notes.into(),
+        export_command: export_command_for(id),
+    };
+
+    let netns_t =
+        |id: &str, name: &str, vendor: &str, icon: &str, service: &str, notes: &str| NodeTemplate {
+            id: id.into(),
+            name: name.into(),
+            vendor: vendor.into(),
+            icon: icon.into(),
+            cpus: 1,
+            ram_mb: 0,
+            interfaces: 8,
+            max_interfaces: 32,
+            iface_pattern: "eth{i}".into(),
+            console: ConsoleKind::Serial,
+            kind: NodeKind::Netns,
+            qemu: QemuSpec::default(),
+            container: None,
+            netns: Some(NetnsSpec {
+                service: service.into(),
+            }),
+            notes: notes.into(),
+            export_command: export_command_for(id),
+        };
+
+    let container_t = |id: &str,
+                       name: &str,
+                       vendor: &str,
+                       icon: &str,
+                       ifaces: u32,
+                       pattern: &str,
+                       spec: ContainerSpec,
+                       notes: &str| NodeTemplate {
+        id: id.into(),
+        name: name.into(),
+        vendor: vendor.into(),
+        icon: icon.into(),
+        cpus: 2,
+        ram_mb: 0,
+        interfaces: ifaces,
+        max_interfaces: 32,
+        iface_pattern: pattern.into(),
+        console: ConsoleKind::Serial,
+        kind: NodeKind::Container,
+        qemu: QemuSpec::default(),
+        container: Some(spec),
+        netns: None,
         notes: notes.into(),
         export_command: export_command_for(id),
     };
 
     vec![
+        // ---- built-ins that need no image at all ----
+        netns_t(
+            "frr",
+            "FRRouting",
+            "Open Source",
+            "router",
+            "frr",
+            "Built-in: FRR daemons from the host package in an isolated namespace. \
+             Startup config is a full frr.conf (OSPF/BGP/EVPN/LDP). No image needed. \
+             Console: shell — run vtysh.",
+        ),
+        netns_t(
+            "host",
+            "Linux Endpoint",
+            "Open Source",
+            "server",
+            "",
+            "Built-in: lightweight Linux endpoint (network namespace + shell). \
+             Startup config is a shell script run at boot. No image needed.",
+        ),
+        container_t(
+            "srlinux",
+            "Nokia SR Linux",
+            "Nokia",
+            "switch",
+            8,
+            "e1-{i+1}",
+            ContainerSpec {
+                image: "ghcr.io/nokia/srlinux:24.10.1".into(),
+                cmd: vec![
+                    "/tini".into(),
+                    "--".into(),
+                    "fixuid".into(),
+                    "-q".into(),
+                    "/entrypoint.sh".into(),
+                    "sudo".into(),
+                    "bash".into(),
+                    "-c".into(),
+                    "touch /.dockerenv && /opt/srlinux/bin/sr_linux".into(),
+                ],
+                env: vec!["SRLINUX=1".into()],
+                privileged: true,
+                console_cmd: Some("sr_cli".into()),
+            },
+            "Built-in: pulled automatically from ghcr.io/nokia/srlinux on first start \
+             (public, no login). Console drops into sr_cli. Data ports e1-1..e1-N.",
+        ),
+        // ---- BYOI containers (upload a docker image tarball) ----
+        container_t(
+            "ceos",
+            "Arista cEOS",
+            "Arista",
+            "switch",
+            8,
+            "eth{i}",
+            ContainerSpec {
+                image: "ceos:byoi".into(),
+                cmd: vec![
+                    "/sbin/init".into(),
+                    "systemd.setenv=INTFTYPE=eth".into(),
+                    "systemd.setenv=ETBA=1".into(),
+                    "systemd.setenv=SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1".into(),
+                    "systemd.setenv=CEOS=1".into(),
+                    "systemd.setenv=EOS_PLATFORM=ceoslab".into(),
+                    "systemd.setenv=container=docker".into(),
+                ],
+                env: vec![
+                    "INTFTYPE=eth".into(),
+                    "ETBA=1".into(),
+                    "SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1".into(),
+                    "CEOS=1".into(),
+                    "EOS_PLATFORM=ceoslab".into(),
+                    "container=docker".into(),
+                ],
+                privileged: true,
+                console_cmd: Some("Cli".into()),
+            },
+            "BYOI: upload the cEOS-lab tarball (arista.com) via the Images page — \
+             it is docker-loaded as ceos:byoi. Console drops into Cli.",
+        ),
+        container_t(
+            "crpd",
+            "Juniper cRPD",
+            "Juniper",
+            "router",
+            8,
+            "eth{i}",
+            ContainerSpec {
+                image: "crpd:byoi".into(),
+                cmd: vec![],
+                env: vec![],
+                privileged: true,
+                console_cmd: Some("cli".into()),
+            },
+            "BYOI: upload the cRPD docker tarball (juniper.net) via the Images page — \
+             docker-loaded as crpd:byoi. Console drops into Junos cli.",
+        ),
         t(
             "linux",
             "Linux Host",
@@ -390,21 +590,6 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
                 ..Default::default()
             },
             "Cloud Hosted Router chr .img/.qcow2. Login admin / blank.",
-        ),
-        t(
-            "frr",
-            "FRRouting (Linux)",
-            "Open Source",
-            "router",
-            1,
-            768,
-            8,
-            "eth{i}",
-            QemuSpec {
-                config_delivery: ConfigDelivery::CloudInit,
-                ..Default::default()
-            },
-            "Linux cloud image with FRR installed via cloud-init.",
         ),
         t(
             "xrv9k",

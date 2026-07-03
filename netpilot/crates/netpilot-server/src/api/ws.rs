@@ -61,7 +61,7 @@ async fn bridge_console(
 ) -> anyhow::Result<()> {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
-    let sock_path = match state.supervisor.console_socket(lab_id, node_id).await {
+    let sock_path = match state.console_socket(lab_id, node_id).await {
         Ok(p) => p,
         Err(_) => {
             let _ = ws_tx

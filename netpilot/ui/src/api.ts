@@ -124,9 +124,13 @@ export interface SystemStatus {
   version: string
   kvm: boolean
   qemu_available: boolean
+  docker_available: boolean
+  frr_available: boolean
+  datapath: string
   running_nodes: number
   labs: number
   images: number
+  ai: { available: boolean; provider: string; model: string }
 }
 
 export interface DiskImage {
