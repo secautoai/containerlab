@@ -1,0 +1,191 @@
+// Copyright 2025
+// Licensed under the BSD 3-Clause License.
+// SPDX-License-Identifier: BSD-3-Clause
+
+package api
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/srl-labs/containerlab/studio/engine"
+)
+
+// execRequest is the body for running a command on a node.
+type execRequest struct {
+	Cmd string `json:"cmd"`
+}
+
+func (h *Handler) execNode(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req execRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Cmd == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "cmd is required"})
+		return
+	}
+
+	res, err := h.Engine.Exec(r.Context(), lab, node, req.Cmd)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, res)
+}
+
+// lifecycleRequest is the body for a per-node lifecycle action.
+type lifecycleRequest struct {
+	Action string `json:"action"`
+}
+
+func (h *Handler) nodeLifecycle(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req lifecycleRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	valid := false
+
+	for _, a := range engine.ValidActions() {
+		if a == req.Action {
+			valid = true
+			break
+		}
+	}
+
+	if !valid {
+		writeJSON(w, http.StatusBadRequest,
+			errorResponse{Error: "action must be one of start, stop, restart"})
+
+		return
+	}
+
+	if err := h.Engine.NodeLifecycle(r.Context(), lab, node, req.Action); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": req.Action})
+}
+
+// impairRequest is the body for setting netem link impairments on an interface.
+type impairRequest struct {
+	Interface               string `json:"interface"`
+	engine.ImpairmentParams        // inline delay/jitter/loss/rate/corruption
+}
+
+func (h *Handler) impairNode(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req impairRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Interface == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "interface is required"})
+		return
+	}
+
+	if err := req.ImpairmentParams.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := h.Engine.SetImpairment(r.Context(), lab, node, req.Interface, req.ImpairmentParams); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "impairment applied"})
+}
+
+// iperfRequest selects the source and target nodes for a throughput test.
+type iperfRequest struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func (h *Handler) iperfLab(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+
+	var req iperfRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.From == "" || req.To == "" || req.From == req.To {
+		writeJSON(w, http.StatusBadRequest,
+			errorResponse{Error: "from and to must be two distinct nodes"})
+
+		return
+	}
+
+	res, err := h.Engine.Throughput(r.Context(), lab, req.From, req.To)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, res)
+}
+
+// captureRequest selects the interface and packet count for a capture.
+type captureRequest struct {
+	Interface string `json:"interface"`
+	Count     int    `json:"count"`
+}
+
+func (h *Handler) captureNode(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+	node := r.PathValue("node")
+
+	var req captureRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if req.Interface == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "interface is required"})
+		return
+	}
+
+	data, err := h.Engine.Capture(r.Context(), lab, node, req.Interface, req.Count)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	filename := fmt.Sprintf("%s-%s-%s.pcap", lab, node, req.Interface)
+	w.Header().Set("Content-Type", "application/vnd.tcpdump.pcap")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (h *Handler) validateLab(w http.ResponseWriter, r *http.Request) {
+	lab := r.PathValue("name")
+
+	report, err := h.Engine.Validate(r.Context(), lab)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, report)
+}

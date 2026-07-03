@@ -53,6 +53,18 @@ build:
 	sudo chown root:root $(BINARY)
 	sudo chmod 4755 $(BINARY)
 
+# Build the ClabStudio web UI (studio/frontend) and refresh the embedded dist/
+# directory that is compiled into the containerlab binary. Requires Node.js.
+# The built dist/ is committed so `go build` works without Node installed.
+STUDIO_FRONTEND_DIR = $(CURDIR)/studio/frontend
+.PHONY: studio-frontend
+studio-frontend:
+	cd $(STUDIO_FRONTEND_DIR) && npm install && npm run build
+
+# Convenience target: rebuild the UI, then the containerlab binary with it.
+.PHONY: studio
+studio: studio-frontend build
+
 build-linux-arm64:
 	mkdir -p $(BIN_DIR)
 	GOOS=linux GOARCH=arm64 go build -o $(BINARY) -ldflags="$(LDFLAGS)" main.go

@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+/* React Flow tweaks for dark mode */
+.dark .react-flow__background {
+  background-color: #020617;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.clab-node {
+  @apply rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition;
+  @apply border-slate-300 bg-white text-slate-800;
+  @apply dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
+  min-width: 92px;
+}
+
+.clab-node.selected {
+  @apply border-brand ring-2 ring-brand/40;
+}
+
+.clab-node.running {
+  @apply border-emerald-500;
+}
+
+/* thin scrollbars */
+* {
+  scrollbar-width: thin;
+}

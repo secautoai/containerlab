@@ -121,6 +121,11 @@ func GetOptions() *Options {
 				Short: false,
 				JSON:  false,
 			},
+			Studio: &StudioOptions{
+				Address:   "0.0.0.0:8080",
+				AIModel:   "gpt-4o-mini",
+				AIBaseURL: "https://api.openai.com/v1",
+			},
 		}
 	}
 
@@ -149,6 +154,7 @@ type Options struct {
 	ToolsVxlan     *ToolsVxlanOptions
 	ToolsSnapshot  *ToolsSnapshotOptions
 	Version        *VersionOptions
+	Studio         *StudioOptions
 }
 
 func (o *Options) ToClabOptions() []clabcore.ClabOption {
@@ -527,4 +533,20 @@ type ToolsSnapshotOptions struct {
 type VersionOptions struct {
 	Short bool
 	JSON  bool
+}
+
+// StudioOptions configures the `clab studio` web application.
+type StudioOptions struct {
+	// Address is the listen address for the web server (host:port).
+	Address string
+	// LabsDir is the directory where studio labs are stored.
+	LabsDir string
+	// AIBaseURL is the base URL of an OpenAI-compatible API.
+	AIBaseURL string
+	// AIModel is the chat model name used by the Copilot.
+	AIModel string
+	// AIAPIKey is the API key for the AI provider (usually set via env).
+	AIAPIKey string
+	// AuthToken, when set, enables shared-secret authentication for the UI/API.
+	AuthToken string
 }
