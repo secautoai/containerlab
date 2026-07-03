@@ -1,0 +1,134 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+body {
+  --bg: #0c0e11;
+  --panel: #111419;
+  --panel2: #171b22;
+  --border: #222834;
+  --border2: #2f3846;
+  --text: #e9edf3;
+  --muted: #8a94a6;
+  --accent: #38d1ba;
+  --accentSoft: rgba(56, 209, 186, 0.13);
+  --green: #3ecf8e;
+  --red: #f0655a;
+  --amber: #e8b348;
+  --violet: #a78bfa;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+@keyframes popIn {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+@keyframes fadeUp {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes drawIn {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+@keyframes blinkCursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+input,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* hover/focus states from the design's style-hover / style-focus attributes */
+.chip:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+  color: var(--text) !important;
+}
+.chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.iconbtn:hover:not(:disabled) {
+  background: var(--border) !important;
+  color: var(--text) !important;
+}
+.composer:focus-within {
+  border-color: var(--accent) !important;
+}
+.nodecard:hover {
+  border-color: var(--accent) !important;
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+}
+.btn-danger:hover {
+  color: var(--red) !important;
+  border-color: var(--red) !important;
+}

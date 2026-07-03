@@ -3,8 +3,10 @@
 //! Usage:
 //!   netpilot [--data <dir>] [--listen <addr:port>] [--ui <dist-dir>]
 //!
-//! Environment:
-//!   ANTHROPIC_API_KEY   enables the AI agent mode
+//! Environment (also read from a `.env` file in the working directory or
+//! any ancestor; real environment variables win over the file):
+//!   ANTHROPIC_API_KEY   enables the AI agent (Anthropic)
+//!   OPENROUTER_API_KEY  enables the AI agent (OpenRouter)
 //!   NETPILOT_AI_MODEL   overrides the agent model
 //!   RUST_LOG            log filtering (default info)
 
@@ -28,6 +30,41 @@ struct Options {
     ui_dir: Option<PathBuf>,
     port_base: u16,
     datapath: state::DatapathMode,
+}
+
+/// Load `KEY=VALUE` lines from the nearest `.env` (working directory or any
+/// ancestor) into the process environment. Accepts a UTF-8 BOM and shell
+/// style `export KEY=VALUE` lines. Already-set variables win, so a real
+/// environment always overrides the file. Returns the file used.
+///
+/// Must run before the async runtime exists: `set_var` with other threads
+/// alive is the setenv/getenv race (and `unsafe` from Rust 2024).
+fn load_dotenv() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    loop {
+        let candidate = dir.join(".env");
+        if let Ok(body) = std::fs::read_to_string(&candidate) {
+            for line in body.trim_start_matches('\u{feff}').lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                let line = line.strip_prefix("export ").unwrap_or(line);
+                let Some((key, value)) = line.split_once('=') else {
+                    continue;
+                };
+                let key = key.trim();
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                if !key.is_empty() && std::env::var_os(key).is_none() {
+                    std::env::set_var(key, value);
+                }
+            }
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
 }
 
 fn parse_args() -> Options {
@@ -87,14 +124,24 @@ fn parse_args() -> Options {
     opts
 }
 
+fn main() -> anyhow::Result<()> {
+    // Import .env while the process is still single-threaded.
+    let dotenv = load_dotenv();
+    serve(dotenv)
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn serve(dotenv: Option<PathBuf>) -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "info,netpilot=debug".into()),
         )
         .init();
+
+    if let Some(path) = dotenv {
+        tracing::info!("env file: {}", path.display());
+    }
 
     let opts = parse_args();
     tracing::info!("data dir: {}", opts.data_dir.display());

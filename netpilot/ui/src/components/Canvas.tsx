@@ -1,5 +1,7 @@
-// Topology canvas built on React Flow: device/network/annotation nodes,
-// interface-labeled edges, drag-drop node creation, context menus.
+// Topology canvas built on React Flow, rendered in the Strato visual
+// language: device cards with vendor-hued icon tiles, thin straight links
+// with subnet labels and animated packet dots, dashed-red failed links.
+// Editing behaviors (drag, cable, context menu, drop-to-create) are kept.
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
@@ -13,7 +15,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
-  getBezierPath,
+  getStraightPath,
   useReactFlow,
   type Connection,
   type Edge,
@@ -21,10 +23,10 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react'
-import { Cloud, Globe, Network as NetworkIcon, Waypoints } from 'lucide-react'
-import { api, ifaceName, type Endpoint, type LabView } from '../api'
+import { api, ifaceName, type Endpoint, type LabView, type Template } from '../api'
 import { useStore } from '../store'
-import { iconFor, stateColor } from './icons'
+import { deviceIcon, hue, hueBg, hueOf } from '../vendors'
+import { stateColor } from './icons'
 
 export interface Selection {
   kind: 'node' | 'network' | 'link' | 'annotation'
@@ -41,35 +43,89 @@ interface MenuState {
   nodeId: string
 }
 
+const mono = "'IBM Plex Mono', ui-monospace, monospace"
+
+const pulse = 'pulseDot 1.2s ease-in-out infinite'
+const stateDot = (state: string): { color: string; anim: string } => ({
+  color: stateColor[state] ?? stateColor.stopped,
+  anim: state === 'starting' || state === 'stopping' ? pulse : 'none',
+})
+
 // ---------- custom node renderers ----------
 
 function DeviceNode({ data, selected }: NodeProps) {
-  const d = data as { name: string; icon: string; template: string; state: string }
-  const Icon = iconFor(d.icon)
-  const color = stateColor[d.state] ?? stateColor.stopped
+  const d = data as {
+    name: string
+    icon: string
+    templateName: string
+    vendor: string
+    state: string
+  }
+  const h = hueOf(d.vendor)
+  const dot = stateDot(d.state)
   return (
-    <div
-      className={`flex w-24 flex-col items-center gap-1 rounded-lg px-2 py-2 transition ${
-        selected ? 'bg-ink-800 ring-1 ring-cyan-400' : 'hover:bg-ink-850'
-      }`}
-    >
+    <div style={{ animation: 'popIn .45s cubic-bezier(.2,1.2,.4,1)' }}>
       <div
-        className="relative flex h-12 w-12 items-center justify-center rounded-xl border-2 bg-ink-850"
-        style={{ borderColor: color }}
+        className="nodecard"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: 'var(--panel)',
+          border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: 12,
+          padding: '9px 14px 9px 9px',
+          boxShadow: selected ? '0 0 0 3px var(--accentSoft), var(--shadow)' : 'var(--shadow)',
+          minWidth: 138,
+        }}
       >
-        <Icon size={24} style={{ color }} />
-        <span
-          className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-ink-950"
-          style={{ background: color }}
-        />
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            background: hueBg(h),
+            display: 'grid',
+            placeItems: 'center',
+            flex: '0 0 34px',
+          }}
+        >
+          {deviceIcon(d.icon, 18, hue(h))}
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              letterSpacing: '-.1px',
+              whiteSpace: 'nowrap',
+              fontFamily: mono,
+              color: 'var(--text)',
+            }}
+          >
+            {d.name}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: dot.color,
+                animation: dot.anim,
+              }}
+            />
+            <span style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+              {d.templateName}
+            </span>
+          </div>
+        </div>
       </div>
-      <span className="max-w-24 truncate font-mono text-[11px] text-ink-200">{d.name}</span>
-      <span className="-mt-1 text-[9px] uppercase tracking-wide text-ink-600">{d.template}</span>
       <Handle
         type="source"
         position={Position.Top}
         id="h"
-        style={{ top: 32, left: '50%', transform: 'translate(-50%,-50%)' }}
+        style={{ top: 26, left: 26, transform: 'translate(-50%,-50%)' }}
       />
     </div>
   )
@@ -77,24 +133,42 @@ function DeviceNode({ data, selected }: NodeProps) {
 
 function NetworkNode({ data, selected }: NodeProps) {
   const d = data as { name: string; netKind: string }
-  const Icon =
-    d.netKind === 'cloud' ? Cloud : d.netKind === 'nat' ? Globe : d.netKind === 'management' ? Waypoints : NetworkIcon
+  const iconName = d.netKind === 'cloud' ? 'cloud' : d.netKind === 'nat' ? 'internet' : 'network'
   return (
     <div
-      className={`flex flex-col items-center gap-1 rounded-lg px-2 py-1.5 ${
-        selected ? 'bg-ink-800 ring-1 ring-cyan-400' : 'hover:bg-ink-850'
-      }`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4,
+        animation: 'popIn .45s cubic-bezier(.2,1.2,.4,1)',
+      }}
     >
-      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-ink-400 bg-ink-850 text-ink-300">
-        <Icon size={18} />
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          border: `1.5px dashed ${selected ? 'var(--accent)' : 'var(--border2)'}`,
+          background: 'var(--panel)',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: selected ? '0 0 0 3px var(--accentSoft)' : 'none',
+        }}
+      >
+        {deviceIcon(iconName, 18, selected ? 'var(--accent)' : 'var(--muted)')}
       </div>
-      <span className="font-mono text-[10px] text-ink-300">{d.name}</span>
-      <span className="-mt-1 text-[8px] uppercase text-ink-600">{d.netKind}</span>
+      <div style={{ fontSize: 10, fontFamily: mono, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+        {d.name}
+      </div>
+      <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '.5px', color: 'var(--muted)', opacity: 0.7, marginTop: -3 }}>
+        {d.netKind}
+      </div>
       <Handle
         type="source"
         position={Position.Top}
         id="h"
-        style={{ top: 24, left: '50%', transform: 'translate(-50%,-50%)' }}
+        style={{ top: 20, left: '50%', transform: 'translate(-50%,-50%)' }}
       />
     </div>
   )
@@ -113,8 +187,8 @@ function AnnotationNode({ data, selected }: NodeProps) {
   if (d.annKind === 'text') {
     return (
       <div
-        className={`whitespace-pre-wrap px-1 ${selected ? 'ring-1 ring-cyan-400' : ''}`}
-        style={{ color: d.color || '#94a3b8', fontSize: d.font_size || 14 }}
+        className={`whitespace-pre-wrap px-1 ${selected ? 'ring-1 ring-accent-500' : ''}`}
+        style={{ color: d.color || '#8a94a6', fontSize: d.font_size || 14 }}
       >
         {d.text || 'text'}
       </div>
@@ -122,40 +196,41 @@ function AnnotationNode({ data, selected }: NodeProps) {
   }
   return (
     <div
-      className={selected ? 'ring-1 ring-cyan-400' : ''}
+      className={selected ? 'ring-1 ring-accent-500' : ''}
       style={{
         width: d.width || 160,
         height: d.height || 100,
-        background: d.fill || 'rgba(34,211,238,0.06)',
-        border: `1.5px solid ${d.color || '#334155'}`,
+        background: d.fill || 'rgba(56,209,186,0.05)',
+        border: `1.5px solid ${d.color || '#2f3846'}`,
         borderRadius: d.annKind === 'ellipse' ? '50%' : 8,
       }}
     />
   )
 }
 
-// ---------- custom edge with per-end interface labels ----------
+// ---------- Strato edge: straight line, subnet label, packet dot ----------
 
-function LabelledEdge(props: EdgeProps) {
-  const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } = props
-  const [path] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    curvature: 0.2,
-  })
+function StratoEdge(props: EdgeProps) {
+  const { sourceX, sourceY, targetX, targetY } = props
+  const [path, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY })
   const data = props.data as
-    | { aLabel?: string; bLabel?: string; impaired?: boolean; suspended?: boolean }
+    | {
+        aLabel?: string
+        bLabel?: string
+        label?: string
+        impaired?: boolean
+        suspended?: boolean
+        active?: boolean
+      }
     | undefined
+  const down = !!data?.suspended
+  const len = Math.hypot(targetX - sourceX, targetY - sourceY)
   const lerp = (t: number) => ({
     x: sourceX + (targetX - sourceX) * t,
     y: sourceY + (targetY - sourceY) * t,
   })
-  const pa = lerp(0.22)
-  const pb = lerp(0.78)
+  const pa = lerp(0.25)
+  const pb = lerp(0.75)
   return (
     <>
       <BaseEdge
@@ -163,30 +238,71 @@ function LabelledEdge(props: EdgeProps) {
         path={path}
         style={{
           stroke: props.selected
-            ? '#22d3ee'
-            : data?.suspended
-              ? '#ef4444'
+            ? 'var(--accent)'
+            : down
+              ? 'var(--red)'
               : data?.impaired
-                ? '#f59e0b'
-                : '#475569',
-          strokeWidth: props.selected ? 2 : 1.5,
-          strokeDasharray: data?.suspended ? '3 4' : data?.impaired ? '6 3' : undefined,
-          opacity: data?.suspended ? 0.6 : 1,
+                ? 'var(--amber)'
+                : 'var(--border2)',
+          strokeWidth: down ? 2 : 1.6,
+          strokeDasharray: down ? '7 6' : data?.impaired ? '6 3' : undefined,
         }}
       />
+      {down && (
+        <g transform={`translate(${labelX},${labelY})`} style={{ pointerEvents: 'none' }}>
+          <circle r={9} fill="var(--bg)" stroke="var(--red)" strokeWidth={1.5} />
+          <path
+            d="M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5"
+            stroke="var(--red)"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+          />
+        </g>
+      )}
+      {!down && data?.active && (
+        <circle r={2.8} fill="var(--accent)" style={{ pointerEvents: 'none' }}>
+          <animateMotion
+            dur={`${Math.max(len / 130, 0.8).toFixed(2)}s`}
+            repeatCount="indefinite"
+            path={`M ${sourceX} ${sourceY} L ${targetX} ${targetY}`}
+          />
+        </circle>
+      )}
+      {!down && data?.label && (
+        <text
+          x={labelX}
+          y={labelY - 7}
+          fill="var(--muted)"
+          fontSize={9.5}
+          fontFamily={mono}
+          textAnchor="middle"
+          opacity={0.85}
+          style={{ pointerEvents: 'none' }}
+        >
+          {data.label}
+        </text>
+      )}
       <EdgeLabelRenderer>
         {data?.aLabel && (
           <span
-            className="absolute rounded bg-ink-900/90 px-1 font-mono text-[9px] text-ink-300"
-            style={{ transform: `translate(-50%,-50%) translate(${pa.x}px,${pa.y}px)` }}
+            className="absolute rounded px-1 font-mono text-[8.5px]"
+            style={{
+              transform: `translate(-50%,-50%) translate(${pa.x}px,${pa.y}px)`,
+              background: 'rgba(12,14,17,0.85)',
+              color: 'var(--muted)',
+            }}
           >
             {data.aLabel}
           </span>
         )}
         {data?.bLabel && (
           <span
-            className="absolute rounded bg-ink-900/90 px-1 font-mono text-[9px] text-ink-300"
-            style={{ transform: `translate(-50%,-50%) translate(${pb.x}px,${pb.y}px)` }}
+            className="absolute rounded px-1 font-mono text-[8.5px]"
+            style={{
+              transform: `translate(-50%,-50%) translate(${pb.x}px,${pb.y}px)`,
+              background: 'rgba(12,14,17,0.85)',
+              color: 'var(--muted)',
+            }}
           >
             {data.bLabel}
           </span>
@@ -197,7 +313,7 @@ function LabelledEdge(props: EdgeProps) {
 }
 
 const nodeTypes = { device: DeviceNode, net: NetworkNode, annotation: AnnotationNode }
-const edgeTypes = { labelled: LabelledEdge }
+const edgeTypes = { strato: StratoEdge }
 
 // ---------- graph derivation ----------
 
@@ -208,8 +324,9 @@ function endpointNodeId(ep: Endpoint): string {
 function buildGraph(
   lab: LabView,
   states: Record<string, string>,
-  patterns: Record<string, string>,
+  templates: Template[],
 ): { nodes: Node[]; edges: Edge[] } {
+  const byId = new Map(templates.map((t) => [t.id, t]))
   const nodes: Node[] = []
   for (const ann of Object.values(lab.annotations)) {
     nodes.push({
@@ -229,11 +346,18 @@ function buildGraph(
     })
   }
   for (const n of Object.values(lab.nodes)) {
+    const t = byId.get(n.template)
     nodes.push({
       id: n.id,
       type: 'device',
       position: { x: n.x, y: n.y },
-      data: { name: n.name, icon: n.icon, template: n.template, state: states[n.id] ?? 'stopped' },
+      data: {
+        name: n.name,
+        icon: n.icon,
+        templateName: t?.name ?? n.template,
+        vendor: t?.vendor ?? '',
+        state: states[n.id] ?? 'stopped',
+      },
     })
   }
   for (const net of Object.values(lab.networks)) {
@@ -244,22 +368,26 @@ function buildGraph(
       data: { name: net.name, netKind: net.kind },
     })
   }
+  const running = (id: string) => (states[id] ?? 'stopped') === 'running'
   const edges: Edge[] = Object.values(lab.links).map((l) => {
     const label = (ep: Endpoint): string | undefined => {
       if (ep.kind !== 'node') return undefined
       const node = lab.nodes[ep.node]
       if (!node) return undefined
-      return ifaceName(patterns[node.template] ?? 'eth{i}', ep.iface)
+      return ifaceName(byId.get(node.template)?.iface_pattern ?? 'eth{i}', ep.iface)
     }
+    const epActive = (ep: Endpoint) => (ep.kind === 'node' ? running(ep.node) : true)
     return {
       id: l.id,
-      type: 'labelled',
+      type: 'strato',
       source: endpointNodeId(l.a),
       target: endpointNodeId(l.b),
       data: {
         aLabel: label(l.a),
         bLabel: label(l.b),
+        label: l.label,
         suspended: !!l.suspended,
+        active: epActive(l.a) && epActive(l.b) && !l.suspended,
         impaired:
           !!l.impairment &&
           (l.impairment.delay_ms > 0 ||
@@ -301,14 +429,9 @@ function CanvasInner({ onSelect }: CanvasProps) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const wrapper = useRef<HTMLDivElement>(null)
 
-  const patterns = useMemo(
-    () => Object.fromEntries(templates.map((t) => [t.id, t.iface_pattern])),
-    [templates],
-  )
-
   const { nodes, edges } = useMemo(
-    () => (lab ? buildGraph(lab, states, patterns) : { nodes: [], edges: [] }),
-    [lab, states, patterns],
+    () => (lab ? buildGraph(lab, states, templates) : { nodes: [], edges: [] }),
+    [lab, states, templates],
   )
 
   const act = useCallback(
@@ -368,9 +491,21 @@ function CanvasInner({ onSelect }: CanvasProps) {
 
   const menuNode = menu ? lab.nodes[menu.nodeId] : null
   const menuState = menuNode ? (states[menuNode.id] ?? 'stopped') : 'stopped'
+  const nodeCount = Object.keys(lab.nodes).length
+  const linkCount = Object.keys(lab.links).length
+  const anyRunning = Object.values(states).some((s) => s === 'running')
 
   return (
-    <div ref={wrapper} className="relative h-full w-full" onClick={() => setMenu(null)}>
+    <div
+      ref={wrapper}
+      className="relative h-full w-full"
+      onClick={() => setMenu(null)}
+      style={{
+        background: 'var(--bg)',
+        backgroundImage: 'radial-gradient(#1a212c 1.2px, transparent 1.2px)',
+        backgroundSize: '26px 26px',
+      }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -399,7 +534,10 @@ function CanvasInner({ onSelect }: CanvasProps) {
         }}
         onNodeDoubleClick={(_, node) => {
           const n = lab.nodes[node.id]
-          if (n) openConsole(n.id, n.name)
+          if (!n) return
+          const st = states[node.id] ?? 'stopped'
+          if (st === 'running' || st === 'starting') openConsole(n.id, n.name)
+          else pushLog('info', `${n.name} is not running — start it to open its console`)
         }}
         onEdgeClick={(_, edge) => onSelect({ kind: 'link', id: edge.id })}
         onPaneClick={() => {
@@ -429,26 +567,83 @@ function CanvasInner({ onSelect }: CanvasProps) {
           onSelect(null)
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1e293b" />
-        <Controls position="bottom-left" showInteractive={false} />
+        <Background variant={BackgroundVariant.Dots} gap={26} size={1.2} color="#1a212c" />
+        <Controls position="bottom-left" showInteractive={false} style={{ marginBottom: 46 }} />
         <MiniMap
           position="bottom-right"
           pannable
           zoomable
-          nodeColor={(n) => (n.type === 'device' ? '#334155' : '#1e293b')}
-          maskColor="rgba(10,14,20,0.7)"
+          nodeColor={() => '#2f3846'}
+          maskColor="rgba(12,14,17,0.72)"
+          style={{ width: 140, height: 90 }}
         />
       </ReactFlow>
 
+      {nodeCount === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+          <div style={{ textAlign: 'center', color: 'var(--muted)' }}>
+            <svg
+              width={44}
+              height={44}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--border2)"
+              strokeWidth={1.4}
+              style={{ margin: '0 auto 10px' }}
+            >
+              <circle cx={5.5} cy={6} r={2.5} />
+              <circle cx={18.5} cy={6} r={2.5} />
+              <circle cx={12} cy={18} r={2.5} />
+              <path d="M7.5 7.5 10.5 16M16.5 7.5 13.5 16M8 6h8" />
+            </svg>
+            <div style={{ fontSize: 13 }}>The lab you describe will build itself here.</div>
+            <div style={{ fontSize: 11.5, marginTop: 4, opacity: 0.75 }}>
+              Ask the agent on the left — or open Devices and drag one on.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="absolute bottom-3.5 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+        <span
+          style={{
+            fontSize: 11,
+            color: 'var(--muted)',
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '6px 11px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {nodeCount} devices · {linkCount} links
+        </span>
+        {anyRunning && (
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--muted)',
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '6px 11px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Double-click a device for its console
+          </span>
+        )}
+      </div>
+
       {menu && menuNode && (
         <div
-          className="absolute z-50 w-44 overflow-hidden rounded-lg border border-ink-700 bg-ink-850 py-1 shadow-xl"
-          style={{ left: menu.x, top: menu.y }}
+          className="absolute z-50 w-44 overflow-hidden rounded-xl border border-ink-800 bg-ink-900 py-1"
+          style={{ left: menu.x, top: menu.y, boxShadow: 'var(--shadow)' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="border-b border-ink-700 px-3 py-1.5 font-mono text-xs text-ink-300">
+          <div className="border-b border-ink-800 px-3 py-1.5 font-mono text-xs text-ink-300">
             {menuNode.name}
-            <span className="ml-2 text-[10px]" style={{ color: stateColor[menuState] }}>
+            <span className="ml-2 text-[10px]" style={{ color: stateDot(menuState).color }}>
               {menuState}
             </span>
           </div>
@@ -518,7 +713,7 @@ function MenuItem({
     <button
       onClick={onClick}
       className={`block w-full px-3 py-1.5 text-left text-sm ${
-        danger ? 'text-red-400 hover:bg-red-950/60' : 'text-ink-200 hover:bg-ink-700'
+        danger ? 'text-[#f0655a] hover:bg-red-950/40' : 'text-ink-200 hover:bg-ink-850'
       }`}
     >
       {label}

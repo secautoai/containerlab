@@ -24,12 +24,12 @@ export default function SidePanel({
   const lab = useStore((s) => s.lab)
   if (!lab) return null
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-ink-800 bg-ink-900">
+    <div className="flex flex-col bg-ink-900">
       <div className="flex items-center justify-between border-b border-ink-800 px-3 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-400">
           {selection.kind} properties
         </h3>
-        <button onClick={onClose} className="rounded p-1 text-ink-400 hover:bg-ink-700 hover:text-white">
+        <button onClick={onClose} className="rounded p-1 text-ink-400 hover:bg-ink-700 hover:text-white" title="Clear selection">
           <X size={14} />
         </button>
       </div>
@@ -37,7 +37,7 @@ export default function SidePanel({
       {selection.kind === 'link' && <LinkProps lab={lab} linkId={selection.id} />}
       {selection.kind === 'network' && <NetworkProps lab={lab} netId={selection.id} />}
       {selection.kind === 'annotation' && <AnnotationProps lab={lab} annId={selection.id} />}
-    </aside>
+    </div>
   )
 }
 

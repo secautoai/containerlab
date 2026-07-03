@@ -1,11 +1,11 @@
 // Device palette: templates grouped by vendor, dragged onto the canvas.
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, X } from 'lucide-react'
 import { useStore } from '../store'
-import { iconFor } from './icons'
+import { deviceIcon, hue, hueBg, hueOf } from '../vendors'
 
-export default function Palette() {
+export default function Palette({ onClose }: { onClose?: () => void }) {
   const templates = useStore((s) => s.templates)
   const [filter, setFilter] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -29,7 +29,7 @@ export default function Palette() {
   }, [templates, filter])
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-900">
       <div className="border-b border-ink-800 p-2">
         <div className="flex items-center gap-2 rounded-lg bg-ink-950 px-2 py-1.5">
           <Search size={14} className="text-ink-600" />
@@ -39,6 +39,11 @@ export default function Palette() {
             placeholder="Search devices…"
             className="w-full bg-transparent text-xs text-ink-200 outline-none placeholder:text-ink-600"
           />
+          {onClose && (
+            <button onClick={onClose} className="rounded p-0.5 text-ink-400 hover:text-white" title="Close">
+              <X size={13} />
+            </button>
+          )}
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
@@ -53,7 +58,7 @@ export default function Palette() {
             </button>
             {!collapsed[vendor] &&
               list.map((t) => {
-                const Icon = iconFor(t.icon)
+                const h = hueOf(t.vendor)
                 const hasImage = t.available_images.length > 0
                 return (
                   <div
@@ -66,8 +71,11 @@ export default function Palette() {
                     title={hasImage ? t.notes : `${t.notes}\n\n⚠ no image uploaded (images/${t.id}/<version>/)`}
                     className="group flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-ink-800 active:cursor-grabbing"
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-ink-700 bg-ink-850 text-ink-300 group-hover:border-ink-600">
-                      <Icon size={15} />
+                    <div
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                      style={{ background: hueBg(h) }}
+                    >
+                      {deviceIcon(t.icon, 15, hue(h))}
                     </div>
                     <div className="min-w-0">
                       <div className="truncate text-xs text-ink-200">{t.name}</div>

@@ -42,6 +42,11 @@ pub trait LabToolbox: Send + Sync {
     ) -> Result<Value, String>;
     /// Set link quality / suspension on the link between two nodes.
     async fn set_link_quality(&self, args: Value) -> Result<Value, String>;
+    /// Record one validation check result. The call itself is what the UI
+    /// consumes (streamed as a tool_call event); the default just acks.
+    async fn report_check(&self, _args: Value) -> Result<Value, String> {
+        Ok(serde_json::json!({"recorded": true}))
+    }
 }
 
 /// Tool definitions advertised to the model.
@@ -180,6 +185,19 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             }),
         ),
         t(
+            "report_check",
+            "Record one validation check result in the lab's Validation panel. Call once per check after verifying it on the real consoles, with a short label ('OSPF adjacencies'), a status, and a one-line detail quoting real numbers ('4/4 neighbors FULL — r1↔r2, r1↔r3, ...').",
+            json!({
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "description": "short check name"},
+                    "status": {"type": "string", "enum": ["pass", "warn", "fail"]},
+                    "detail": {"type": "string", "description": "one-line evidence from the consoles"}
+                },
+                "required": ["label", "status", "detail"]
+            }),
+        ),
+        t(
             "run_command",
             "Run a CLI command on a RUNNING node's serial console and return the output. Use for verification (show commands) and live configuration. One command per call.",
             json!({
@@ -232,6 +250,7 @@ pub async fn dispatch(
             toolbox.run_command(node, command, timeout).await
         }
         "set_link_quality" => toolbox.set_link_quality(input.clone()).await,
+        "report_check" => toolbox.report_check(input.clone()).await,
         other => Err(format!("unknown tool: {other}")),
     }
 }

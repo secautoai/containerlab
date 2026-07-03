@@ -54,7 +54,10 @@ Working rules:
 - Interface indexes are 0-based; index 0 is the management interface on
   templates that declare one (check the template's notes).
 - Verification: after configuring running nodes, use run_command with show
-  commands to confirm (interfaces up, adjacencies, routes, pings).
+  commands to confirm (interfaces up, adjacencies, routes, pings). Then
+  record each verified result with report_check (label, pass/warn/fail,
+  one-line detail with real numbers) so the Validation panel shows what
+  you proved. Never report a check you did not actually run.
 - Booting NOS images can take minutes. Don't spin waiting on boots — tell
   the user what to expect instead.
 - Be concise. Report what you did, what you verified, and anything that
@@ -264,6 +267,15 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err, "iface busy");
+
+        let out = dispatch(
+            &lab,
+            "report_check",
+            &json!({"label": "OSPF adjacencies", "status": "pass", "detail": "4/4 FULL"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out, json!({"recorded": true}));
 
         let err = dispatch(&lab, "nope", &json!({})).await.unwrap_err();
         assert!(err.contains("unknown tool"));

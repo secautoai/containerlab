@@ -10,10 +10,10 @@ import {
   HardDrive,
   Plus,
   Trash2,
-  Zap,
 } from 'lucide-react'
 import { api, type LabSummary, type SystemStatus } from '../api'
 import { useStore } from '../store'
+import { stratoMark } from '../vendors'
 import ImageManager from './ImageManager'
 
 export default function Dashboard() {
@@ -53,12 +53,26 @@ export default function Dashboard() {
       <header className="sticky top-0 z-10 border-b border-ink-800 bg-ink-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-600/20 text-accent-500">
-              <Zap size={20} />
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-lg"
+              style={{ background: 'linear-gradient(135deg,var(--accent),#2a8fd1)' }}
+            >
+              {stratoMark({ size: 19 })}
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white">NetPilot</h1>
-              <p className="text-xs text-ink-400">network emulation, reimagined</p>
+              <h1
+                className="text-lg font-semibold text-white"
+                style={{ fontFamily: "'Space Grotesk','IBM Plex Sans',sans-serif", letterSpacing: '-.3px' }}
+              >
+                strato
+                <span
+                  className="ml-2 align-middle text-[10px] font-semibold tracking-wide"
+                  style={{ color: 'var(--accent)', background: 'var(--accentSoft)', borderRadius: 5, padding: '2px 7px' }}
+                >
+                  AI NETWORK ENGINEER
+                </span>
+              </h1>
+              <p className="text-xs text-ink-400">describe a network — it builds, validates, and runs itself · powered by NetPilot</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-3 text-xs text-ink-400">
@@ -135,7 +149,8 @@ export default function Dashboard() {
             />
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 rounded-lg bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-500"
+              className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold"
+              style={{ background: 'var(--accent)', color: '#08211d' }}
             >
               <Plus size={15} /> New Lab
             </button>
@@ -275,7 +290,8 @@ function CreateLabModal({
           <button
             onClick={() => void create()}
             disabled={busy || !name.trim()}
-            className="rounded-lg bg-accent-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50"
+            className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#08211d' }}
           >
             Create
           </button>

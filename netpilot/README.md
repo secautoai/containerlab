@@ -51,6 +51,10 @@ export ANTHROPIC_API_KEY=sk-ant-…          # default model claude-sonnet-5
 # overrides: NETPILOT_AI_PROVIDER, NETPILOT_AI_MODEL, OPENAI_BASE_URL / ANTHROPIC_BASE_URL
 ```
 
+The server also reads these from a `.env` file (`KEY=VALUE` lines) found in
+its working directory or any ancestor — handy for launch configs; real
+environment variables take precedence.
+
 ## Node kinds & device support
 
 Three execution backends, mixable in one lab:
