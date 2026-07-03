@@ -74,6 +74,7 @@ impl LabToolbox for StateToolbox {
                     "interfaces": t.interfaces,
                     "iface_pattern": t.iface_pattern,
                     "notes": t.notes,
+                    "config_guide": t.config_guide,
                     "available_images": images.iter().filter(|i| i.template == t.id)
                         .map(|i| i.version.clone()).collect::<Vec<_>>(),
                 })

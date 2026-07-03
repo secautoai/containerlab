@@ -661,7 +661,10 @@ fn spawn_console_listener(
                     }
                     ConsoleTarget::Docker { name, cmd } => {
                         let mut c = tokio::process::Command::new("docker");
-                        c.args(["exec", "-i", name, cmd]);
+                        // -u root: NOS images gate their CLI by user (SR
+                        // Linux rejects its default container user with
+                        // "not authorized to use CLI").
+                        c.args(["exec", "-i", "-u", "root", name, cmd]);
                         c
                     }
                 };

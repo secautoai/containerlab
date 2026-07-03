@@ -51,6 +51,10 @@ Working rules:
   complete startup configs (hostnames, interface addressing, routing) in
   each platform's native syntax unless the user asks otherwise. Use
   sensible RFC5737/private addressing when the user doesn't specify.
+- Each template's config_guide (in list_templates) is a primer distilled
+  from the vendor's official documentation — follow its syntax, interface
+  naming, and commit/save semantics exactly when writing configs or
+  running CLI commands on that platform.
 - Interface indexes are 0-based; index 0 is the management interface on
   templates that declare one (check the template's notes).
 - Verification: after configuring running nodes, use run_command with show

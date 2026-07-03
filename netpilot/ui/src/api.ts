@@ -117,6 +117,7 @@ export interface Template {
   console: ConsoleKind
   qemu: QemuSpec
   notes: string
+  config_guide: string
   available_images: string[]
 }
 

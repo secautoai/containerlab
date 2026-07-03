@@ -190,6 +190,12 @@ pub struct NodeTemplate {
     /// Free-form notes shown in the UI (image requirements, credentials...).
     #[serde(default)]
     pub notes: String,
+    /// Platform configuration primer distilled from the vendor's official
+    /// documentation: config format, interface naming, minimal routed +
+    /// protocol examples, save/commit semantics. Consumed by the AI agent
+    /// (list_templates) so generated startup configs follow vendor syntax.
+    #[serde(default)]
+    pub config_guide: String,
     /// CLI command that prints the full running configuration on the
     /// serial console (used by "export running config"). None = platform
     /// has no meaningful config dump.
@@ -219,6 +225,199 @@ fn export_command_for(template_id: &str) -> Option<String> {
 
 /// The built-in template catalog. Users can add more via YAML files in the
 /// data directory; those override built-ins with the same id.
+/// Per-platform configuration primer, distilled from the vendor's official
+/// documentation (FRR docs, Nokia SR Linux docs, Cisco IOS/IOS-XE/IOS-XR
+/// config guides, Arista EOS manual, Juniper Junos docs, VyOS docs, OpenWrt
+/// UCI reference, FortiOS/PAN-OS CLI references, MikroTik RouterOS docs).
+/// Keep these short and operational: format, interface naming, a minimal
+/// routed example, protocol snippet, and save/commit semantics.
+fn config_guide_for(template_id: &str) -> &'static str {
+    match template_id {
+        "frr" => "\
+Startup config = complete /etc/frr/frr.conf (integrated config, docs.frrouting.org).
+Interfaces are Linux eth0..N; no 'no shutdown' needed. Live CLI: vtysh.
+  frr defaults traditional
+  hostname r1
+  interface eth0
+   ip address 10.0.0.1/30
+   ip ospf network point-to-point
+  router ospf
+   ospf router-id 1.1.1.1
+   network 10.0.0.0/30 area 0
+BGP: 'router bgp 65001' + 'neighbor X remote-as Y' + address-family blocks.
+Persist from live CLI: vtysh -c 'write memory'.",
+        "host" => "\
+Startup config = shell script run at boot (BusyBox/ash, iproute2).
+  ip addr add 10.0.0.10/24 dev eth0
+  ip link set eth0 up
+  ip route add default via 10.0.0.1
+No routing daemons; static routes only.",
+        "srlinux" => "\
+SR Linux CLI (sr_cli) is transactional (documentation.nokia.com/srlinux).
+Enter 'enter candidate', apply flat set commands, then 'commit stay'.
+Data ports are ethernet-1/1..N; every L3 config lives on a subinterface
+bound into a network-instance:
+  set / interface ethernet-1/1 admin-state enable
+  set / interface ethernet-1/1 subinterface 0 ipv4 admin-state enable
+  set / interface ethernet-1/1 subinterface 0 ipv4 address 10.0.0.1/30
+  set / network-instance default type default
+  set / network-instance default interface ethernet-1/1.0
+  set / network-instance default protocols ospf instance main version ospf-v2
+  set / network-instance default protocols ospf instance main router-id 1.1.1.1
+  set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
+OSPF refuses to commit without a router-id. Show: 'show interface brief',
+'show network-instance default protocols ospf neighbor'.",
+        "ceos" | "veos" => "\
+Arista EOS CLI = industry-standard config mode (www.arista.com EOS manual).
+cEOS ports Ethernet1..N (vEOS: Management1 first). Routed ports need
+'no switchport'; nothing is shut by default on cEOS.
+  configure
+  hostname leaf1
+  interface Ethernet1
+    no switchport
+    ip address 10.0.0.1/30
+  router ospf 1
+    router-id 1.1.1.1
+    network 10.0.0.0/30 area 0
+  end
+  write memory
+BGP/EVPN: 'router bgp 65001', 'address-family evpn', 'vxlan interface Vxlan1'.",
+        "crpd" => "\
+Juniper cRPD = Junos control plane over Linux interfaces (eth0..N).
+CLI: 'cli' -> 'configure' -> set commands -> 'commit' (juniper.net cRPD guide).
+  set interfaces eth1 unit 0 family inet address 10.0.0.1/30
+  set routing-options router-id 1.1.1.1
+  set protocols ospf area 0.0.0.0 interface eth1.0 interface-type p2p
+BGP: set protocols bgp group X type external / peer-as / neighbor.
+No security zones (routing-only container).",
+        "linux" => "\
+Startup config via cloud-init. Bare shell commands run at boot alongside
+the default access (serial auto-login root; SSH root/netpilot):
+  ip addr add 10.0.0.10/24 dev eth1
+  ip link set eth1 up
+  ip route add default via 10.0.0.1
+A full '#cloud-config' document replaces the defaults (set your own users,
+write_files, runcmd — cloudinit.readthedocs.io).",
+        "openwrt" => "\
+OpenWrt uses UCI (openwrt.org/docs/guide-user/base-system/uci).
+Config files under /etc/config; eth0 is bridged into br-lan (192.168.1.1,
+DHCP server on), eth1 = wan (DHCP client). Serial console root, no password.
+  uci set network.lan.ipaddr='10.0.0.1'
+  uci commit network && service network restart
+Firewall zones: uci show firewall. Packages: opkg update && opkg install X
+(needs WAN). LuCI web UI on the LAN address.",
+        "vyos" => "\
+VyOS set-style CLI (docs.vyos.io). Login vyos/vyos. Interfaces eth0..N.
+  configure
+  set interfaces ethernet eth0 address 10.0.0.1/30
+  set protocols ospf area 0 network 10.0.0.0/30
+  set protocols ospf parameters router-id 1.1.1.1
+  commit ; save
+BGP: set protocols bgp system-as 65001 / neighbor X remote-as Y.
+NAT: set nat source rule 10 outbound-interface name eth0 translation address masquerade.",
+        "iosv" | "iosvl2" => "\
+Classic Cisco IOS 15.x (Cisco IOS configuration guides). Ports Gi0/0..N
+(IOSvL2: Gi0/0-3, Gi1/0-3 switchports). Interfaces are shutdown by default.
+  configure terminal
+  hostname r1
+  no ip domain-lookup
+  interface GigabitEthernet0/0
+   ip address 10.0.0.1 255.255.255.252
+   no shutdown
+  router ospf 1
+   router-id 1.1.1.1
+   network 10.0.0.0 0.0.0.3 area 0
+  end
+  write memory
+IOSvL2 switching: 'switchport mode access/trunk', 'vlan 10'. Wildcard masks
+(not prefix lengths) in network statements.",
+        "csr1000v" | "cat8000v" => "\
+Cisco IOS-XE (Cisco IOS-XE configuration guides). Ports GigabitEthernet1..N,
+shutdown by default. Same CLI shape as IOS:
+  configure terminal
+  interface GigabitEthernet1
+   ip address 10.0.0.1 255.255.255.252
+   no shutdown
+  router ospf 1
+   network 10.0.0.0 0.0.0.3 area 0
+  end
+  write memory
+First boot takes minutes; config is injected as iosxe_config.txt.",
+        "xrv9k" => "\
+Cisco IOS XR (XR configuration guides). Ports GigabitEthernet0/0/0/0..N.
+Two-stage config: changes apply only on 'commit'.
+  configure
+  interface GigabitEthernet0/0/0/0
+   ipv4 address 10.0.0.1/30
+   no shutdown
+  router ospf 1
+   router-id 1.1.1.1
+   area 0 interface GigabitEthernet0/0/0/0
+  commit
+XR nests protocol interfaces under the process (no network statements).",
+        "vsrx" => "\
+Juniper vSRX = Junos with a flow-based firewall (Junos security docs).
+fxp0 is management; data ports ge-0/0/0..N. Traffic is DROPPED until
+interfaces are in security zones with policies:
+  set interfaces ge-0/0/0 unit 0 family inet address 10.0.0.1/30
+  set security zones security-zone trust interfaces ge-0/0/0.0
+  set security zones security-zone trust host-inbound-traffic system-services ping
+  set security policies default-policy permit-all
+  set protocols ospf area 0 interface ge-0/0/0.0
+  commit",
+        "vjunos-switch" => "\
+Juniper vJunos-switch = EX-style Junos (Junos EX docs). Ports ge-0/0/0..N.
+  set interfaces ge-0/0/0 unit 0 family inet address 10.0.0.1/30
+  set protocols ospf area 0 interface ge-0/0/0.0
+  commit
+L2: 'set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members v10',
+'set vlans v10 vlan-id 10', IRB via 'set interfaces irb unit 10 family inet address'.",
+        "fortigate" => "\
+FortiOS CLI (docs.fortinet.com CLI reference). Ports port1..N. Traffic needs
+interfaces up + a firewall policy; login admin / (blank) on first boot.
+  config system interface
+    edit port1
+      set mode static
+      set ip 10.0.0.1 255.255.255.252
+      set allowaccess ping https ssh
+    next
+  end
+  config router static
+    edit 1
+      set gateway 10.0.0.2
+      set device port1
+    next
+  end
+  config firewall policy
+    edit 1
+      set srcintf port2  set dstintf port1
+      set srcaddr all    set dstaddr all
+      set action accept  set schedule always  set service ALL
+    next
+  end",
+        "panos" => "\
+PAN-OS CLI (docs.paloaltonetworks.com). Login admin/admin. Ports
+ethernet1/1..N; interfaces need a zone + virtual router to pass traffic.
+  configure
+  set network interface ethernet ethernet1/1 layer3 ip 10.0.0.1/30
+  set network virtual-router default interface ethernet1/1
+  set zone trust network layer3 ethernet1/1
+  set rulebase security rules allow-all from any to any action allow
+  commit
+Commits take ~1 minute; management plane boots slowly.",
+        "chr" => "\
+MikroTik RouterOS CHR (help.mikrotik.com). Login admin / (blank).
+Menu-path CLI:
+  /ip address add address=10.0.0.1/30 interface=ether1
+  /routing ospf instance add name=default router-id=1.1.1.1
+  /routing ospf area add name=backbone instance=default
+  /routing ospf interface-template add interfaces=ether1 area=backbone type=ptp
+  /ip route add dst-address=0.0.0.0/0 gateway=10.0.0.2
+Config is applied immediately (no commit); '/export' shows it.",
+        _ => "",
+    }
+}
+
 pub fn builtin_templates() -> Vec<NodeTemplate> {
     let t = |id: &str,
              name: &str,
@@ -246,6 +445,7 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
         netns: None,
         notes: notes.into(),
         export_command: export_command_for(id),
+        config_guide: config_guide_for(id).into(),
     };
 
     let netns_t =
@@ -268,6 +468,7 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
             }),
             notes: notes.into(),
             export_command: export_command_for(id),
+            config_guide: config_guide_for(id).into(),
         };
 
     let container_t = |id: &str,
@@ -294,6 +495,7 @@ pub fn builtin_templates() -> Vec<NodeTemplate> {
         netns: None,
         notes: notes.into(),
         export_command: export_command_for(id),
+        config_guide: config_guide_for(id).into(),
     };
 
     vec![
