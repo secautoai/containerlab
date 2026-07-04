@@ -6,6 +6,7 @@ use netpilot_core::{Annotation, AnnotationKind, Endpoint, Impairment, Link, Netw
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::api::auth::{require_edit, require_view, Auth};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -13,8 +14,10 @@ use crate::state::AppState;
 
 pub async fn list_networks(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Network>>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     Ok(Json(lab.networks.values().cloned().collect()))
 }
@@ -32,9 +35,11 @@ pub struct CreateNetwork {
 
 pub async fn create_network(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
     Json(req): Json<CreateNetwork>,
 ) -> ApiResult<Json<Network>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             let n = lab.networks.len() + 1;
@@ -66,9 +71,11 @@ pub struct UpdateNetwork {
 
 pub async fn update_network(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, net_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateNetwork>,
 ) -> ApiResult<Json<Network>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             let net = lab
@@ -101,8 +108,10 @@ pub async fn update_network(
 
 pub async fn remove_network(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, net_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     let removed_links: Vec<Uuid> = state
         .mutate_lab(lab_id, |lab| {
             let links: Vec<Uuid> = lab
@@ -125,8 +134,10 @@ pub async fn remove_network(
 
 pub async fn list_links(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Link>>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     Ok(Json(lab.links.values().cloned().collect()))
 }
@@ -141,9 +152,11 @@ pub struct CreateLink {
 
 pub async fn create_link(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
     Json(req): Json<CreateLink>,
 ) -> ApiResult<Json<Link>> {
+    require_edit(&state, &principal, lab_id).await?;
     if req.a == req.b {
         return Err(ApiError::bad_request("cannot link an endpoint to itself"));
     }
@@ -170,9 +183,11 @@ pub struct UpdateLink {
 
 pub async fn update_link(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, link_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateLink>,
 ) -> ApiResult<Json<Link>> {
+    require_edit(&state, &principal, lab_id).await?;
     let link = state
         .mutate_lab(lab_id, |lab| {
             let link = lab
@@ -214,8 +229,10 @@ pub async fn update_link(
 
 pub async fn remove_link(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, link_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             lab.links
@@ -232,8 +249,10 @@ pub async fn remove_link(
 
 pub async fn list_annotations(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Annotation>>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     Ok(Json(lab.annotations.values().cloned().collect()))
 }
@@ -261,9 +280,11 @@ pub struct CreateAnnotation {
 
 pub async fn create_annotation(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
     Json(req): Json<CreateAnnotation>,
 ) -> ApiResult<Json<Annotation>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             let ann = Annotation {
@@ -301,9 +322,11 @@ pub struct UpdateAnnotation {
 
 pub async fn update_annotation(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, ann_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateAnnotation>,
 ) -> ApiResult<Json<Annotation>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             let ann = lab.annotations.get_mut(&ann_id).ok_or_else(|| {
@@ -344,8 +367,10 @@ pub async fn update_annotation(
 
 pub async fn remove_annotation(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, ann_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             lab.annotations.remove(&ann_id).ok_or_else(|| {

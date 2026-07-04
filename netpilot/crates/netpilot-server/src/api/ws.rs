@@ -10,7 +10,17 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 /// Live event stream: every core Event as a JSON text message.
-pub async fn events(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+pub async fn events(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    // Require an authenticated principal (token via ?token= for WebSockets);
+    // the stream carries events across every lab.
+    if let Err(e) = crate::api::auth::principal_from(&state, &headers, query.as_deref()).await {
+        return e.into_response();
+    }
     ws.on_upgrade(move |socket| async move {
         let (mut tx, mut rx) = socket.split();
         let mut events = state.events.subscribe();
@@ -45,7 +55,18 @@ pub async fn console(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+    headers: axum::http::HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
+    // Console is a root shell on the node — require edit access on the lab.
+    let principal = match crate::api::auth::principal_from(&state, &headers, query.as_deref()).await
+    {
+        Ok(p) => p,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = crate::api::auth::require_edit(&state, &principal, lab_id).await {
+        return e.into_response();
+    }
     ws.on_upgrade(move |socket| async move {
         if let Err(e) = bridge_console(socket, state, lab_id, node_id).await {
             tracing::debug!("console bridge closed: {e}");
@@ -130,7 +151,18 @@ pub async fn vnc(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
+    headers: axum::http::HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
+    // VNC gives full GUI/keyboard control of the node — require edit access.
+    let principal = match crate::api::auth::principal_from(&state, &headers, query.as_deref()).await
+    {
+        Ok(p) => p,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = crate::api::auth::require_edit(&state, &principal, lab_id).await {
+        return e.into_response();
+    }
     ws.on_upgrade(move |socket| async move {
         let (mut ws_tx, mut ws_rx) = socket.split();
         let port = match state.supervisor.vnc_port(lab_id, node_id).await {

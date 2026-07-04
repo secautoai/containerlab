@@ -8,8 +8,19 @@ use netpilot_core::{iface_name_from_pattern, ConsoleKind, Node, NodeState};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::api::auth::{require_edit, require_view, Auth};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
+
+/// Node/host names are interpolated into cloud-init YAML, FRR pathspaces,
+/// shell rcfiles, and container names — keep them to a safe charset.
+pub fn valid_device_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
 
 #[derive(Serialize)]
 pub struct NodeView {
@@ -20,8 +31,10 @@ pub struct NodeView {
 
 pub async fn list(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<NodeView>>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let states = state.lab_states(lab_id).await;
     Ok(Json(
@@ -53,9 +66,18 @@ pub struct CreateNode {
 
 pub async fn create(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
     Json(req): Json<CreateNode>,
 ) -> ApiResult<Json<Node>> {
+    require_edit(&state, &principal, lab_id).await?;
+    if let Some(n) = req.name.as_deref() {
+        if !n.trim().is_empty() && !valid_device_name(n.trim()) {
+            return Err(ApiError::bad_request(
+                "node name must be <=64 chars of letters, digits, . - _",
+            ));
+        }
+    }
     let templates = state.templates.read().await;
     let template = templates.get(&req.template)?.clone();
     drop(templates);
@@ -133,8 +155,10 @@ pub async fn create(
 
 pub async fn get_node(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<NodeView>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let node = lab.node(node_id)?.clone();
     let node_state = state.node_state(lab_id, node_id).await;
@@ -160,9 +184,18 @@ pub struct UpdateNode {
 
 pub async fn update(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateNode>,
 ) -> ApiResult<Json<Node>> {
+    require_edit(&state, &principal, lab_id).await?;
+    if let Some(n) = req.name.as_deref() {
+        if !n.trim().is_empty() && !valid_device_name(n.trim()) {
+            return Err(ApiError::bad_request(
+                "node name must be <=64 chars of letters, digits, . - _",
+            ));
+        }
+    }
     let running = state.supervisor.is_running(lab_id, node_id).await;
     // Position/name/icon are safe to change live; hardware is not.
     let hw_change = req.cpus.is_some()
@@ -238,8 +271,10 @@ pub async fn update(
 
 pub async fn remove(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state.stop_node(lab_id, node_id).await?;
     state
         .mutate_lab(lab_id, |lab| Ok(lab.remove_node(node_id)?))
@@ -251,24 +286,30 @@ pub async fn remove(
 
 pub async fn start(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state.start_node(lab_id, node_id).await?;
     Ok(Json(serde_json::json!({ "started": node_id })))
 }
 
 pub async fn stop(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state.stop_node(lab_id, node_id).await?;
     Ok(Json(serde_json::json!({ "stopped": node_id })))
 }
 
 pub async fn wipe(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state.wipe_node(lab_id, node_id).await?;
     Ok(Json(serde_json::json!({ "wiped": node_id })))
 }
@@ -282,9 +323,11 @@ pub struct ConfigQuery {
 
 pub async fn get_config(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
     axum::extract::Query(q): axum::extract::Query<ConfigQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let node = lab.node(node_id)?;
     let config = match q.set.as_deref().filter(|s| !s.is_empty()) {
@@ -301,10 +344,12 @@ pub struct SetConfig {
 
 pub async fn set_config(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
     axum::extract::Query(q): axum::extract::Query<ConfigQuery>,
     Json(req): Json<SetConfig>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     state
         .mutate_lab(lab_id, |lab| {
             let node = lab.node_mut(node_id)?;
@@ -345,9 +390,12 @@ fn default_exec_timeout() -> u32 {
 /// captured output (the REST twin of the agent's run_command tool).
 pub async fn exec(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<ExecRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Console access lets you reconfigure the device — treat as edit.
+    require_edit(&state, &principal, lab_id).await?;
     if req.command.trim().is_empty() {
         return Err(ApiError::bad_request("command must not be empty"));
     }
@@ -362,8 +410,10 @@ pub async fn exec(
 /// `export_command`.
 pub async fn export_config(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let node = lab.node(node_id)?.clone();
     let templates = state.templates.read().await;
@@ -421,8 +471,10 @@ pub struct InterfaceView {
 
 pub async fn interfaces(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<Vec<InterfaceView>>> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let node = lab.node(node_id)?;
     let templates = state.templates.read().await;

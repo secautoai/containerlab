@@ -105,6 +105,8 @@ export default function LabEditor() {
   // learns before clicking Start instead of finding errors buried in Sessions.
   const tmplById = new Map(templates.map((t) => [t.id, t]))
   const blockers: string[] = []
+  let blockedCount = 0
+  const totalNodes = Object.keys(lab.nodes).length
   if (system) {
     let needBridge = 0
     let needImage = 0
@@ -114,6 +116,7 @@ export default function LabEditor() {
       if (t.kind !== 'qemu' && system.datapath !== 'bridge') needBridge++
       else if (t.kind === 'qemu' && t.available_images.length === 0 && !n.image) needImage++
     }
+    blockedCount = needBridge + needImage
     if (needBridge > 0)
       blockers.push(
         `${needBridge} ${needBridge === 1 ? 'device needs' : 'devices need'} the bridge datapath (Linux + root) — this server runs the "${system.datapath}" datapath, so ${needBridge === 1 ? 'it' : 'they'} can't boot here`,
@@ -121,6 +124,9 @@ export default function LabEditor() {
     if (needImage > 0)
       blockers.push(`${needImage} ${needImage === 1 ? 'device has' : 'devices have'} no disk image uploaded`)
   }
+  // Only hard-block Start when EVERY device is unstartable here; if some can
+  // boot, let the server start those and just warn about the skipped ones.
+  const allBlocked = totalNodes > 0 && blockedCount >= totalNodes
 
   const addNetwork = async (kind: NetworkKind) => {
     setNetMenu(false)
@@ -232,11 +238,16 @@ export default function LabEditor() {
                 setNotice('warn', 'This lab has no devices yet — add some before starting.')
                 return
               }
-              if (blockers.length) {
-                // Everything is blocked: don't fire a start that will only
+              if (allBlocked) {
+                // Nothing here can boot: don't fire a start that would only
                 // produce a wall of Sessions errors; explain instead.
                 setNotice('warn', `Can't start on this server — ${blockers.join('; ')}.`)
                 return
+              }
+              if (blockers.length) {
+                // Some devices can't boot here but others can — start the
+                // supported ones and note what was skipped.
+                setNotice('warn', `Starting the devices this server supports; ${blockers.join('; ')}.`)
               }
               pushLog('info', 'starting lab…')
               try {

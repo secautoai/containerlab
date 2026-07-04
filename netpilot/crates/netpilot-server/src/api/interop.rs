@@ -11,6 +11,7 @@ use axum::Json;
 use netpilot_core::{Endpoint, Event, Lab, Link, Network, NetworkKind, Node};
 use uuid::Uuid;
 
+use crate::api::auth::{require_view, Auth, Writer};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -18,8 +19,10 @@ use crate::state::AppState;
 
 pub async fn export_lab(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path(lab_id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    require_view(&state, &principal, lab_id).await?;
     let lab = state.store.load(lab_id)?;
     let yaml = serde_yaml::to_string(&lab).map_err(|e| ApiError::internal(e.to_string()))?;
 
@@ -53,7 +56,11 @@ pub async fn export_lab(
 
 /// Accepts a NetPilot export zip, a bare lab.yaml, an EVE-NG .unl XML
 /// document, or a containerlab topology YAML. Format is sniffed.
-pub async fn import_lab(State(state): State<AppState>, body: Bytes) -> ApiResult<Json<Lab>> {
+pub async fn import_lab(
+    State(state): State<AppState>,
+    Writer(principal): Writer,
+    body: Bytes,
+) -> ApiResult<Json<Lab>> {
     if body.is_empty() {
         return Err(ApiError::bad_request("empty import body"));
     }
@@ -83,6 +90,19 @@ pub async fn import_lab(State(state): State<AppState>, body: Bytes) -> ApiResult
     lab.created_at = chrono::Utc::now();
     lab.touch();
     state.store.save(&lab)?;
+    // Register the importer as owner so RBAC guards resolve on the new lab.
+    if let Some(db) = state.db.as_ref() {
+        db.register_lab(lab.id, principal.user_id, &lab.name)
+            .await
+            .map_err(|e| ApiError::internal(e.to_string()))?;
+        db.audit(
+            Some(principal.user_id),
+            "lab.import",
+            Some(&lab.id.to_string()),
+            Some(&lab.name),
+        )
+        .await;
+    }
     state.events.publish(Event::LabCreated { lab: lab.id });
     Ok(Json(lab))
 }

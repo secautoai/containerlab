@@ -93,6 +93,7 @@ interface AppStore {
   agentBusy: boolean
   agentConnected: boolean
   agentSocket: WebSocket | null
+  agentSessionId: string | null // persisted session id (for resume)
 
   // A transient banner surfaced near the canvas (start failures, warnings)
   // so problems aren't buried in the Sessions tab.
@@ -190,6 +191,7 @@ export const useStore = create<AppStore>((set, get) => ({
   agentBusy: false,
   agentConnected: false,
   agentSocket: null,
+  agentSessionId: null,
 
   notice: null,
   inspectorTab: 'console',
@@ -211,6 +213,7 @@ export const useStore = create<AppStore>((set, get) => ({
       agentBusy: false,
       agentConnected: false,
       agentSocket: null,
+      agentSessionId: null,
       notice: null,
       inspectorTab: 'console',
       inspectorNode: null,
@@ -383,10 +386,25 @@ export const useStore = create<AppStore>((set, get) => ({
     ws.onmessage = (msg) => {
       if (get().agentSocket !== ws) return // stale socket must not touch state
       try {
-        const ev = JSON.parse(msg.data)
+        let ev = JSON.parse(msg.data)
+        // Session lifecycle: the server assigns a persisted session id on
+        // connect ({type:'session'}) and echoes it after a resume replay
+        // ({type:'resumed'}); track it so the transcript can be resumed later.
+        if (ev.type === 'session' || ev.type === 'resumed') {
+          set({ agentSessionId: ev.session })
+          return
+        }
+        // A resumed transcript streams as {type:'history', item:<stored event>};
+        // render the wrapped event through the same path as a live one.
+        if (ev.type === 'history') ev = ev.item
+        if (!ev || typeof ev !== 'object') return
         if (ev.type === 'text') {
           set((s) => ({ agentItems: [...s.agentItems, { kind: 'assistant', text: ev.text }] }))
           get().record('agent', ev.text)
+        } else if (ev.type === 'user') {
+          // Replayed user turn from a resumed transcript (live user turns are
+          // added client-side in sendAgent, so this only fires on replay).
+          set((s) => ({ agentItems: [...s.agentItems, { kind: 'user', text: ev.text, files: ev.files }] }))
         } else if (ev.type === 'tool_call') {
           const input = (ev.input ?? {}) as AgentToolInput
           if (ev.name === 'report_check') {
@@ -451,6 +469,7 @@ export const useStore = create<AppStore>((set, get) => ({
         agentSocket: ws,
         agentItems: [],
         agentBusy: false,
+        agentSessionId: null,
         checks: [],
         lastValidated: null,
         cfgTouched: {},

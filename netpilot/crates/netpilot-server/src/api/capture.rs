@@ -7,6 +7,7 @@ use axum::Json;
 use netpilot_net::PortId;
 use uuid::Uuid;
 
+use crate::api::auth::{require_edit, require_view, Auth};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -22,8 +23,10 @@ fn capture_path(state: &AppState, lab: Uuid, node: Uuid, iface: u32) -> std::pat
 
 pub async fn start(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id, iface)): Path<(Uuid, Uuid, u32)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     let switch = state.switch_for(lab_id).await;
     let path = capture_path(&state, lab_id, node_id, iface);
     switch
@@ -45,8 +48,10 @@ pub async fn start(
 
 pub async fn stop(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id, iface)): Path<(Uuid, Uuid, u32)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    require_edit(&state, &principal, lab_id).await?;
     let switch = state.switch_for(lab_id).await;
     switch
         .stop_capture(PortId {
@@ -72,8 +77,10 @@ pub struct PacketSummary {
 /// TCP/UDP/ICMP). Not Wireshark — just enough to see what's on the wire.
 pub async fn summary(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id, iface)): Path<(Uuid, Uuid, u32)>,
 ) -> ApiResult<Json<Vec<PacketSummary>>> {
+    require_view(&state, &principal, lab_id).await?;
     let path = capture_path(&state, lab_id, node_id, iface);
     let data = std::fs::read(&path)
         .map_err(|_| ApiError::not_found("no capture file — start a capture first"))?;
@@ -440,8 +447,10 @@ mod tests {
 
 pub async fn download(
     State(state): State<AppState>,
+    Auth(principal): Auth,
     Path((lab_id, node_id, iface)): Path<(Uuid, Uuid, u32)>,
 ) -> ApiResult<impl IntoResponse> {
+    require_view(&state, &principal, lab_id).await?;
     let path = capture_path(&state, lab_id, node_id, iface);
     let data = std::fs::read(&path)
         .map_err(|_| ApiError::not_found("no capture file — start a capture first"))?;

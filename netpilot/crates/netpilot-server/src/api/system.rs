@@ -218,6 +218,7 @@ pub async fn delete_image(
 /// configured reference (e.g. `ceos:byoi`).
 pub async fn upload_docker_image(
     State(state): State<AppState>,
+    crate::api::auth::Writer(_principal): crate::api::auth::Writer,
     axum::extract::Path(template_id): axum::extract::Path<String>,
     body: axum::body::Body,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -313,8 +314,10 @@ pub struct NodeStats {
 
 pub async fn lab_stats(
     State(state): State<AppState>,
+    crate::api::auth::Auth(principal): crate::api::auth::Auth,
     axum::extract::Path(lab_id): axum::extract::Path<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<NodeStats>>> {
+    crate::api::auth::require_view(&state, &principal, lab_id).await?;
     let mut out = Vec::new();
     for (node, pid) in state.supervisor.pids(lab_id).await {
         let status = tokio::fs::read_to_string(format!("/proc/{pid}/status"))

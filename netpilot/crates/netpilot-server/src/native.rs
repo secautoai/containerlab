@@ -162,9 +162,27 @@ impl NativeSupervisor {
                 Ok(())
             }
             Err(e) => {
-                // Best-effort cleanup of partial state.
+                // The node was never inserted, so stop() will never run —
+                // tear down partial state here or leak FRR daemons (they
+                // survive `netns del`) and host-side veths.
                 let ns = format!("np-{}", short_id(spec.node_id));
+                // Kill anything still in the namespace BEFORE deleting it:
+                // once the named ns is gone, `netns pids` can't find the
+                // daemons and they leak as orphans.
+                if let Ok(pids) = run("ip", &["netns", "pids", &ns]).await {
+                    for pid in pids.split_whitespace() {
+                        let _ = run("kill", &["-9", pid]).await;
+                    }
+                }
                 let _ = run("ip", &["netns", "del", &ns]).await;
+                let _ = std::fs::remove_dir_all(format!("/var/run/frr/{ns}"));
+                // Host-side veths are deterministically named; drop any this
+                // partial start created (each `ip link add` has a matching
+                // peer that vanishes with its side, so deleting host is enough).
+                for i in 0..spec.interfaces {
+                    let host = netpilot_net::node_tap(spec.lab_id, spec.node_id, i);
+                    let _ = run("ip", &["link", "del", &host]).await;
+                }
                 self.publish(
                     spec.lab_id,
                     spec.node_id,
@@ -279,7 +297,7 @@ impl NativeSupervisor {
             let path = spec.socket_dir.join("pre-boot.sh");
             std::fs::write(&path, script)?;
             let out = tokio::process::Command::new("ip")
-                .args(["netns", "exec", &ns, "sh", path.to_str().unwrap()])
+                .args(["netns", "exec", &ns, "sh", path.to_str().unwrap_or("pre-boot.sh")])
                 .output()
                 .await?;
             if !out.status.success() {
