@@ -132,6 +132,36 @@ export interface SystemStatus {
   labs: number
   images: number
   ai: { available: boolean; provider: string; model: string }
+  auth_enabled: boolean
+}
+
+export type Role = 'admin' | 'operator' | 'viewer'
+
+export interface AuthUser {
+  id: string
+  username: string
+  role: Role
+}
+
+export interface ShareGrant {
+  user_id: string
+  username: string
+  access: 'view' | 'edit'
+}
+
+export interface LabShares {
+  visibility: 'private' | 'public'
+  owner: string | null
+  shares: ShareGrant[]
+}
+
+export interface AgentSessionMeta {
+  id: string
+  lab_id: string
+  user_id: string
+  title: string
+  updated_at: string
+  event_count: number
 }
 
 export interface DiskImage {
@@ -156,10 +186,28 @@ class ApiError extends Error {
   }
 }
 
+// Bearer token for multi-user deployments. Persisted so a reload stays
+// logged in; injected into every REST request and WebSocket URL.
+const TOKEN_KEY = 'netpilot.token'
+let authToken: string | null = localStorage.getItem(TOKEN_KEY)
+
+export function setToken(token: string | null) {
+  authToken = token
+  if (token) localStorage.setItem(TOKEN_KEY, token)
+  else localStorage.removeItem(TOKEN_KEY)
+}
+
+export function getToken(): string | null {
+  return authToken
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  if (authToken) headers['authorization'] = `Bearer ${authToken}`
   const res = await fetch(path, {
     method,
-    headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const text = await res.text()
@@ -179,6 +227,31 @@ export const api = {
   system: () => request<SystemStatus>('GET', '/api/system'),
   templates: () => request<Template[]>('GET', '/api/templates'),
   images: () => request<DiskImage[]>('GET', '/api/images'),
+  deleteImage: (template: string, version: string) =>
+    request<unknown>('DELETE', `/api/images/${template}/${version}`),
+
+  // auth + multi-user
+  login: (username: string, password: string) =>
+    request<{ token: string; user: AuthUser }>('POST', '/api/auth/login', { username, password }),
+  logout: () => request<unknown>('POST', '/api/auth/logout'),
+  me: () => request<{ authenticated: boolean; user: AuthUser }>('GET', '/api/auth/me'),
+  users: () => request<AuthUser[]>('GET', '/api/users'),
+  createUser: (body: { username: string; password: string; role: Role }) =>
+    request<AuthUser>('POST', '/api/users', body),
+  updateUser: (id: string, body: { password?: string; role?: Role }) =>
+    request<unknown>('PUT', `/api/users/${id}`, body),
+
+  // lab sharing
+  labShares: (id: string) => request<LabShares>('GET', `/api/labs/${id}/shares`),
+  shareLab: (id: string, body: { username?: string; access?: 'view' | 'edit'; visibility?: 'private' | 'public' }) =>
+    request<LabShares>('PUT', `/api/labs/${id}/shares`, body),
+  unshareLab: (id: string, username: string) =>
+    request<unknown>('DELETE', `/api/labs/${id}/shares/${encodeURIComponent(username)}`),
+
+  // persisted agent sessions
+  agentSessions: (id: string) => request<AgentSessionMeta[]>('GET', `/api/labs/${id}/sessions`),
+  agentSession: (id: string, session: string) =>
+    request<{ id: string; events: unknown[] }>('GET', `/api/labs/${id}/sessions/${session}`),
 
   labs: () => request<LabSummary[]>('GET', '/api/labs'),
   createLab: (body: { name: string; description?: string }) =>
@@ -264,9 +337,14 @@ export const api = {
   captureUrl: (lab: string, node: string, iface: number) =>
     `/api/labs/${lab}/nodes/${node}/interfaces/${iface}/capture.pcap`,
 
-  exportUrl: (lab: string) => `/api/labs/${lab}/export`,
+  exportUrl: (lab: string) =>
+    `/api/labs/${lab}/export${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`,
+  captureDownloadUrl: (lab: string, node: string, iface: number) =>
+    `/api/labs/${lab}/nodes/${node}/interfaces/${iface}/capture.pcap${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`,
   import: async (file: File): Promise<Lab> => {
-    const res = await fetch('/api/import', { method: 'POST', body: file })
+    const headers: Record<string, string> = {}
+    if (authToken) headers['authorization'] = `Bearer ${authToken}`
+    const res = await fetch('/api/import', { method: 'POST', headers, body: file })
     const text = await res.text()
     if (!res.ok) {
       let message = text
@@ -283,7 +361,11 @@ export const api = {
 
 export function wsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}${path}`
+  // WebSocket upgrades can't send an Authorization header; pass the token
+  // as a query param (the server accepts ?token= for WS auth).
+  const sep = path.includes('?') ? '&' : '?'
+  const auth = authToken ? `${sep}token=${encodeURIComponent(authToken)}` : ''
+  return `${proto}://${location.host}${path}${auth}`
 }
 
 // Interface name from a template pattern like "Gi0/{i}" / "eth{i}" / "Gi{i+1}".

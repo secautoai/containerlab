@@ -4,7 +4,9 @@
 import { create } from 'zustand'
 import {
   api,
+  setToken,
   wsUrl,
+  type AuthUser,
   type LabView,
   type NodeState,
   type SystemStatus,
@@ -78,6 +80,8 @@ interface AppStore {
   view: { kind: 'dashboard' } | { kind: 'lab'; labId: string }
   templates: Template[]
   system: SystemStatus | null
+  user: AuthUser | null
+  authReady: boolean
   lab: LabView | null
   states: Record<string, NodeState>
   consoles: ConsoleTab[]
@@ -103,6 +107,9 @@ interface AppStore {
   refreshLab(): Promise<void>
   loadTemplates(): Promise<void>
   loadSystem(): Promise<void>
+  initAuth(): Promise<void>
+  login(username: string, password: string): Promise<void>
+  logout(): Promise<void>
   connectEvents(): void
 
   openConsole(nodeId: string, nodeName: string): void
@@ -165,6 +172,8 @@ export const useStore = create<AppStore>((set, get) => ({
   view: { kind: 'dashboard' },
   templates: [],
   system: null,
+  user: null,
+  authReady: false,
   lab: null,
   states: {},
   consoles: [],
@@ -252,6 +261,42 @@ export const useStore = create<AppStore>((set, get) => ({
     } catch {
       /* header degrades gracefully */
     }
+  },
+
+  // Resolve auth state at startup: if the server requires auth, verify any
+  // stored token; otherwise mark ready immediately (single-user mode).
+  async initAuth() {
+    const system = get().system ?? (await api.system().catch(() => null))
+    if (system) set({ system })
+    if (!system?.auth_enabled) {
+      set({ authReady: true, user: null })
+      return
+    }
+    try {
+      const me = await api.me()
+      set({ user: me.user, authReady: true })
+    } catch {
+      setToken(null)
+      set({ user: null, authReady: true })
+    }
+  },
+
+  async login(username: string, password: string) {
+    const { token, user } = await api.login(username, password)
+    setToken(token)
+    set({ user })
+    await Promise.all([get().loadTemplates(), get().loadSystem()])
+  },
+
+  async logout() {
+    try {
+      await api.logout()
+    } catch {
+      /* revoke best-effort */
+    }
+    setToken(null)
+    get().openDashboard()
+    set({ user: null })
   },
 
   connectEvents() {

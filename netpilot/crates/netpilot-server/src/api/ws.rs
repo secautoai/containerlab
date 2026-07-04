@@ -2,7 +2,7 @@
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use futures::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
@@ -192,8 +192,19 @@ pub async fn agent(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     Path(lab_id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
+    // Authenticate the upgrade (token via ?token= for WebSockets) and
+    // require edit access — the agent mutates the lab.
+    let principal = match crate::api::auth::principal_from(&state, &headers, query.as_deref()).await {
+        Ok(p) => p,
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = crate::api::auth::require_edit(&state, &principal, lab_id).await {
+        return e.into_response();
+    }
     ws.on_upgrade(move |socket| async move {
-        crate::agent::run_agent_socket(socket, state, lab_id).await;
+        crate::agent::run_agent_socket(socket, state, lab_id, principal).await;
     })
 }

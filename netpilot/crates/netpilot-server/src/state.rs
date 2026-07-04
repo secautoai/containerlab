@@ -56,6 +56,11 @@ pub struct AppState {
     pub datapath: DatapathMode,
     /// Linux plumbing (bridge mode).
     plumbing: Arc<Plumbing>,
+    /// Optional Postgres persistence (users/RBAC/sharing/firmware/sessions).
+    /// None → single-user file-only mode.
+    pub db: Option<netpilot_db::Db>,
+    /// Bearer-token store (Redis or in-process). Present iff `db` is.
+    pub tokens: Option<netpilot_db::TokenStore>,
 }
 
 impl AppState {
@@ -90,6 +95,8 @@ impl AppState {
             lab_write_lock: Arc::new(tokio::sync::Mutex::new(())),
             datapath,
             plumbing: Arc::new(Plumbing::new(Arc::new(SystemRunner))),
+            db: None,
+            tokens: None,
         };
 
         // Track node states off the event bus.
@@ -107,6 +114,21 @@ impl AppState {
         });
 
         Ok(state)
+    }
+
+    /// Connect optional Postgres/Redis persistence. Called once at startup
+    /// when `NETPILOT_DB_URL` is set; leaves the state single-user otherwise.
+    pub async fn attach_db(&mut self, db_url: &str, redis_url: Option<&str>) -> anyhow::Result<()> {
+        let db = netpilot_db::Db::connect(db_url).await?;
+        let tokens = netpilot_db::TokenStore::new(redis_url).await;
+        self.db = Some(db);
+        self.tokens = Some(tokens);
+        Ok(())
+    }
+
+    /// True when multi-user persistence is active (auth required).
+    pub fn auth_enabled(&self) -> bool {
+        self.db.is_some()
     }
 
     pub fn kvm(&self) -> bool {

@@ -55,6 +55,37 @@ The server also reads these from a `.env` file (`KEY=VALUE` lines) found in
 its working directory or any ancestor — handy for launch configs; real
 environment variables take precedence.
 
+## Multi-user mode (optional)
+
+By default NetPilot is single-user with a file store. Point it at Postgres to
+turn on accounts, RBAC, lab sharing, firmware metadata, and persisted agent
+sessions:
+
+```bash
+export NETPILOT_DB_URL=postgres://netpilot:netpilot@localhost/netpilot
+export NETPILOT_REDIS_URL=redis://127.0.0.1/   # optional: shared session tokens
+```
+
+On first start the schema is migrated and a default **admin / admin** is
+seeded (change it). Then:
+
+- **Accounts & RBAC** — three roles: `admin` (everything, user management),
+  `operator` (create/run/share own labs), `viewer` (read-only, can't create
+  labs but can be granted edit on a shared lab). `POST /api/auth/login`
+  returns a bearer token; `/api/users` manages accounts (admin only).
+- **Lab ownership & sharing** — each lab has an owner and `private`/`public`
+  visibility; owners grant per-user `view`/`edit` via the Share dialog
+  (`/api/labs/{id}/shares`). The lab list and every lab route are filtered by
+  effective access.
+- **Firmware library** — uploads record size + sha256 and an audit entry;
+  `DELETE /api/images/{template}/{version}` removes an image (write access).
+- **Agent sessions** — every agent conversation is saved per (lab, user) and
+  resumable; `GET /api/labs/{id}/sessions` lists them, and the chat can
+  replay a transcript.
+
+Without `NETPILOT_DB_URL` none of this is active and the server behaves
+exactly as the single-user file-store build (`auth_enabled: false`).
+
 ## Node kinds & device support
 
 Three execution backends, mixable in one lab:

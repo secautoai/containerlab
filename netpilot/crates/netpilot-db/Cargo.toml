@@ -1,0 +1,24 @@
+[package]
+name = "netpilot-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Optional Postgres + Redis persistence: users/RBAC, lab ownership & sharing,
+# firmware (image) metadata, and agent-session history. The server runs
+# fully without it (single-user, file store) and lights this up when
+# NETPILOT_DB_URL is set.
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "connection-manager"] }
+argon2 = "0.5"
+rand = "0.9"

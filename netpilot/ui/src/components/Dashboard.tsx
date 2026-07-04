@@ -8,6 +8,7 @@ import {
   Cpu,
   FileUp,
   HardDrive,
+  LogOut,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -23,6 +24,8 @@ export default function Dashboard() {
   const [showImages, setShowImages] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const openLab = useStore((s) => s.openLab)
+  const user = useStore((s) => s.user)
+  const logout = useStore((s) => s.logout)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = async () => {
@@ -106,6 +109,30 @@ export default function Dashboard() {
                   <HardDrive size={14} /> {system.images} images
                 </span>
               </>
+            )}
+            {user && (
+              <div className="ml-1 flex items-center gap-2 border-l border-ink-800 pl-3">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-[#08211d]"
+                  style={{ background: 'var(--accent)' }}
+                  title={`${user.username} · ${user.role}`}
+                >
+                  {user.username.slice(0, 2).toUpperCase()}
+                </span>
+                <span className="text-ink-300">
+                  {user.username}
+                  <span className="ml-1 rounded bg-ink-800 px-1 py-0.5 text-[9px] uppercase text-ink-400">
+                    {user.role}
+                  </span>
+                </span>
+                <button
+                  onClick={() => void logout()}
+                  title="Sign out"
+                  className="rounded p-1 text-ink-400 hover:bg-ink-800 hover:text-white"
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
             )}
           </div>
         </div>

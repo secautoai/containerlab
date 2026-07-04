@@ -27,6 +27,8 @@ pub struct SystemStatus {
     pub labs: usize,
     pub images: usize,
     pub ai: AiStatus,
+    /// True when multi-user persistence is on and a login is required.
+    pub auth_enabled: bool,
 }
 
 pub async fn status(State(state): State<AppState>) -> ApiResult<Json<SystemStatus>> {
@@ -57,6 +59,7 @@ pub async fn status(State(state): State<AppState>) -> ApiResult<Json<SystemStatu
         labs: state.store.list().map(|l| l.len()).unwrap_or(0),
         images: state.images.scan().map(|i| i.len()).unwrap_or(0),
         ai,
+        auth_enabled: state.auth_enabled(),
     }))
 }
 
@@ -104,8 +107,11 @@ pub async fn images(State(state): State<AppState>) -> ApiResult<Json<Vec<DiskIma
 
 /// Upload a base image (streamed to disk):
 /// `PUT /api/images/{template}/{version}/{filename}` with the raw bytes.
+/// Requires write access; records firmware metadata (size + sha256) when
+/// persistence is on.
 pub async fn upload_image(
     State(state): State<AppState>,
+    crate::api::auth::Writer(principal): crate::api::auth::Writer,
     axum::extract::Path((template, version, filename)): axum::extract::Path<(
         String,
         String,
@@ -114,6 +120,7 @@ pub async fn upload_image(
     body: axum::body::Body,
 ) -> ApiResult<Json<serde_json::Value>> {
     use futures::TryStreamExt;
+    use sha2::{Digest, Sha256};
     use tokio::io::AsyncWriteExt;
 
     let ok_name = |s: &str| {
@@ -146,24 +153,62 @@ pub async fn upload_image(
     let mut file = tokio::fs::File::create(&tmp_path).await?;
     let mut stream = body.into_data_stream();
     let mut written: u64 = 0;
+    let mut hasher = Sha256::new();
     while let Some(chunk) = stream
         .try_next()
         .await
         .map_err(|e| crate::error::ApiError::bad_request(format!("upload aborted: {e}")))?
     {
         written += chunk.len() as u64;
+        hasher.update(&chunk);
         file.write_all(&chunk).await?;
     }
     file.flush().await?;
     drop(file);
     tokio::fs::rename(&tmp_path, &final_path).await?;
+    let sha = format!("{:x}", hasher.finalize());
+
+    if let Some(db) = state.db.as_ref() {
+        let uploader = (principal.user_id != uuid::Uuid::nil()).then_some(principal.user_id);
+        let _ = db
+            .record_firmware(&template, &version, &filename, written as i64, Some(&sha), uploader)
+            .await;
+        db.audit(uploader, "firmware.upload", Some(&format!("{template}/{version}")), Some(&sha[..16])).await;
+    }
 
     Ok(Json(serde_json::json!({
         "template": template,
         "version": version,
         "filename": filename,
         "size_bytes": written,
+        "sha256": sha,
     })))
+}
+
+/// Delete a firmware image (and its metadata). Requires write access.
+pub async fn delete_image(
+    State(state): State<AppState>,
+    crate::api::auth::Writer(principal): crate::api::auth::Writer,
+    axum::extract::Path((template, version)): axum::extract::Path<(String, String)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let ok_name = |s: &str| {
+        !s.is_empty()
+            && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+            && !s.starts_with('.')
+    };
+    if !ok_name(&template) || !ok_name(&version) {
+        return Err(crate::error::ApiError::bad_request("invalid template/version"));
+    }
+    let dir = state.images.dir_for(&template, &version);
+    if dir.exists() {
+        tokio::fs::remove_dir_all(&dir).await?;
+    }
+    if let Some(db) = state.db.as_ref() {
+        let _ = db.delete_firmware(&template, &version).await;
+        let uploader = (principal.user_id != uuid::Uuid::nil()).then_some(principal.user_id);
+        db.audit(uploader, "firmware.delete", Some(&format!("{template}/{version}")), None).await;
+    }
+    Ok(Json(serde_json::json!({ "deleted": format!("{template}/{version}") })))
 }
 
 /// BYOI: upload a docker image tarball for a container template.

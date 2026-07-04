@@ -522,7 +522,17 @@ pub async fn run_console_command(
 }
 
 /// WebSocket driver for one agent chat session.
-pub async fn run_agent_socket(socket: WebSocket, state: AppState, lab_id: Uuid) {
+///
+/// When persistence is enabled the transcript is saved per (lab, user) in an
+/// `agent_session`: the client may send `{"resume": "<session-id>"}` to
+/// replay history, and every user message + streamed event is appended so
+/// the conversation survives reloads. Without a DB it is ephemeral as before.
+pub async fn run_agent_socket(
+    socket: WebSocket,
+    state: AppState,
+    lab_id: Uuid,
+    principal: netpilot_db::Principal,
+) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     let claude = match Claude::from_env() {
@@ -546,6 +556,10 @@ pub async fn run_agent_socket(socket: WebSocket, state: AppState, lab_id: Uuid) 
         lab_id,
     };
 
+    // Lazily-created persistence handle for this conversation.
+    let mut session_id: Option<Uuid> = None;
+    let persist = state.db.clone();
+
     while let Some(Ok(msg)) = ws_rx.next().await {
         let text = match msg {
             Message::Text(t) => t.to_string(),
@@ -555,20 +569,66 @@ pub async fn run_agent_socket(socket: WebSocket, state: AppState, lab_id: Uuid) 
         let Ok(v) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
+
+        // Resume: replay a stored transcript, then continue appending to it.
+        if let Some(sid) = v.get("resume").and_then(|s| s.as_str()).and_then(|s| Uuid::parse_str(s).ok()) {
+            if let Some(db) = persist.as_ref() {
+                if db.session_owner(sid).await.map(|o| o == principal.user_id).unwrap_or(false) {
+                    if let Ok(events) = db.agent_events(sid).await {
+                        for ev in events {
+                            let framed = serde_json::json!({ "type": "history", "item": ev });
+                            let _ = ws_tx.send(Message::Text(framed.to_string().into())).await;
+                        }
+                    }
+                    session_id = Some(sid);
+                    let _ = ws_tx
+                        .send(Message::Text(serde_json::json!({"type": "resumed", "session": sid}).to_string().into()))
+                        .await;
+                }
+            }
+            continue;
+        }
+
         let Some(user_message) = v.get("message").and_then(|m| m.as_str()) else {
             continue;
         };
+        let user_message = user_message.to_string();
+
+        // Open a persisted session on the first real message.
+        if session_id.is_none() {
+            if let Some(db) = persist.as_ref() {
+                let title: String = user_message.chars().take(60).collect();
+                if let Ok(id) = db.create_agent_session(lab_id, principal.user_id, &title).await {
+                    session_id = Some(id);
+                    let _ = ws_tx
+                        .send(Message::Text(serde_json::json!({"type": "session", "session": id}).to_string().into()))
+                        .await;
+                }
+            }
+        }
+        // Record the user turn.
+        if let (Some(db), Some(sid)) = (persist.as_ref(), session_id) {
+            let _ = db
+                .append_agent_event(sid, &serde_json::json!({"type": "user", "text": user_message}))
+                .await;
+        }
 
         let (tx, mut rx) = mpsc::channel::<AgentEvent>(64);
-        let user_message = user_message.to_string();
 
         // Run the turn and pump its events to the websocket concurrently.
         // `tx` moves into the turn and is dropped when it finishes, which
         // closes the channel and ends the pump.
         let turn = session.run_turn(&user_message, &toolbox, tx);
+        let persist_ref = persist.clone();
         let pump = async {
             while let Some(ev) = rx.recv().await {
                 let json = serde_json::to_string(&ev).unwrap_or_default();
+                // Persist the streamed event alongside forwarding it.
+                if let (Some(db), Some(sid)) = (persist_ref.as_ref(), session_id) {
+                    if let Ok(val) = serde_json::to_value(&ev) {
+                        let _ = db.append_agent_event(sid, &val).await;
+                    }
+                }
                 if ws_tx.send(Message::Text(json.into())).await.is_err() {
                     break;
                 }

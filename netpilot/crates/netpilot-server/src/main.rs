@@ -146,8 +146,22 @@ async fn serve(dotenv: Option<PathBuf>) -> anyhow::Result<()> {
     let opts = parse_args();
     tracing::info!("data dir: {}", opts.data_dir.display());
 
-    let state =
+    let mut state =
         state::AppState::with_datapath(opts.data_dir.clone(), opts.port_base, opts.datapath)?;
+
+    // Optional multi-user persistence (users/RBAC/sharing/firmware/sessions).
+    if let Ok(db_url) = std::env::var("NETPILOT_DB_URL") {
+        let redis_url = std::env::var("NETPILOT_REDIS_URL").ok();
+        match state.attach_db(&db_url, redis_url.as_deref()).await {
+            Ok(()) => tracing::info!("persistence: postgres connected — auth enabled"),
+            Err(e) => {
+                tracing::error!("NETPILOT_DB_URL set but connection failed: {e}");
+                return Err(e);
+            }
+        }
+    } else {
+        tracing::info!("persistence: none (single-user, file store)");
+    }
     tracing::info!("datapath: {:?}", opts.datapath);
     tracing::info!(
         "kvm: {} · labs: {}",

@@ -5,6 +5,7 @@ members = [
     "crates/netpilot-qemu",
     "crates/netpilot-net",
     "crates/netpilot-ai",
+    "crates/netpilot-db",
     "crates/netpilot-server",
 ]
 

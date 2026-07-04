@@ -1,5 +1,7 @@
 //! REST + WebSocket API surface.
 
+pub mod admin;
+pub mod auth;
 pub mod capture;
 pub mod interop;
 pub mod labs;
@@ -9,7 +11,7 @@ pub mod topology;
 pub mod ws;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 
 use crate::state::AppState;
@@ -27,6 +29,7 @@ pub fn router(state: AppState) -> Router {
             "/api/images/{template}/{version}/{filename}",
             put(system::upload_image).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
         )
+        .route("/api/images/{template}/{version}", delete(system::delete_image))
         .route(
             "/api/images/docker/{template}",
             put(system::upload_docker_image).layer(DefaultBodyLimit::max(UPLOAD_LIMIT)),
@@ -125,6 +128,22 @@ pub fn router(state: AppState) -> Router {
             "/api/import",
             post(interop::import_lab).layer(DefaultBodyLimit::max(256 * 1024 * 1024)),
         )
+        // auth
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/me", get(auth::me))
+        // users (admin)
+        .route("/api/users", get(admin::list_users).post(admin::create_user))
+        .route("/api/users/{user}", put(admin::update_user))
+        // lab sharing
+        .route(
+            "/api/labs/{lab}/shares",
+            get(admin::get_shares).put(admin::update_share),
+        )
+        .route("/api/labs/{lab}/shares/{username}", delete(admin::revoke_share))
+        // agent sessions (persisted history)
+        .route("/api/labs/{lab}/sessions", get(admin::list_sessions))
+        .route("/api/labs/{lab}/sessions/{session}", get(admin::get_session))
         // websockets
         .route("/api/ws/events", get(ws::events))
         .route("/api/ws/console/{lab}/{node}", get(ws::console))

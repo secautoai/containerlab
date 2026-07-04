@@ -13,6 +13,7 @@ netpilot-core = { path = "../netpilot-core" }
 netpilot-qemu = { path = "../netpilot-qemu" }
 netpilot-net = { version = "0.1.0", path = "../netpilot-net" }
 netpilot-ai = { path = "../netpilot-ai" }
+netpilot-db = { path = "../netpilot-db" }
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -32,6 +33,7 @@ zip.workspace = true
 quick-xml.workspace = true
 async-trait.workspace = true
 reqwest.workspace = true
+sha2 = "0.10"
 
 [dev-dependencies]
 http-body-util = "0.1.3"

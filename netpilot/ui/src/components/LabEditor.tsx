@@ -11,6 +11,7 @@ import {
   LockOpen,
   Network as NetworkIcon,
   Play,
+  Share2,
   Square as SquareIcon,
   SquareDashed,
   Type,
@@ -22,6 +23,7 @@ import Canvas, { type Selection } from './Canvas'
 import Palette from './Palette'
 import AgentChat, { toolLabel } from './AgentChat'
 import Inspector from './Inspector'
+import ShareDialog from './ShareDialog'
 
 const grotesk = "'Space Grotesk', 'IBM Plex Sans', sans-serif"
 
@@ -54,6 +56,7 @@ export default function LabEditor() {
   const [devicesOpen, setDevicesOpen] = useState(false)
   const [docsOpen, setDocsOpen] = useState(false)
   const [docsDraft, setDocsDraft] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   const [configSets, setConfigSets] = useState<{ active: string; sets: string[] }>({
     active: '',
     sets: [],
@@ -278,6 +281,16 @@ export default function LabEditor() {
         >
           <BookOpen size={13} />
         </button>
+        {system?.auth_enabled && (
+          <button
+            onClick={() => setShareOpen(true)}
+            title="Share lab"
+            className="iconbtn"
+            style={headIcon(shareOpen)}
+          >
+            <Share2 size={13} />
+          </button>
+        )}
         <a href={api.exportUrl(lab.id)} title="Export lab" className="iconbtn" style={headIcon()}>
           <Download size={13} />
         </a>
@@ -369,6 +382,10 @@ export default function LabEditor() {
 
         <Inspector selection={selection} onClearSelection={() => setSelection(null)} />
       </div>
+
+      {shareOpen && system?.auth_enabled && (
+        <ShareDialog labId={lab.id} onClose={() => setShareOpen(false)} />
+      )}
     </div>
   )
 }
