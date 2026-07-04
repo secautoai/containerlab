@@ -30,6 +30,10 @@ const grotesk = "'Space Grotesk', 'IBM Plex Sans', sans-serif"
 export default function LabEditor() {
   const lab = useStore((s) => s.lab)
   const system = useStore((s) => s.system)
+  const templates = useStore((s) => s.templates)
+  const notice = useStore((s) => s.notice)
+  const setNotice = useStore((s) => s.setNotice)
+  const dismissNotice = useStore((s) => s.dismissNotice)
   const agentBusy = useStore((s) => s.agentBusy)
   // Scalar selectors: agent/tool events and node_state bursts re-render this
   // shell (and the canvas host below it) only when the derived value changes.
@@ -68,6 +72,14 @@ export default function LabEditor() {
     api.configSets(labId).then(setConfigSets).catch(() => {})
   }, [labId])
 
+  // Auto-dismiss the notice after a while (errors linger longer than info).
+  useEffect(() => {
+    if (!notice) return
+    const ms = notice.level === 'info' ? 4000 : 9000
+    const t = setTimeout(dismissNotice, ms)
+    return () => clearTimeout(t)
+  }, [notice, dismissNotice])
+
   const setSelection = (sel: Selection | null) => {
     setSelectionRaw(sel)
     if (sel) setInspectorTab('details')
@@ -86,6 +98,29 @@ export default function LabEditor() {
 
   const statusColor = agentBusy ? 'var(--accent)' : anyRunning ? 'var(--green)' : 'var(--muted)'
   const statusLabel = agentBusy ? 'Agent working' : anyRunning ? 'Lab running' : 'Idle'
+
+  // Pre-flight: which nodes can't start on THIS server, and why. netns/
+  // container kinds need the bridge datapath (Linux + root); qemu kinds need
+  // an uploaded disk image. Computed from data the UI already has so the user
+  // learns before clicking Start instead of finding errors buried in Sessions.
+  const tmplById = new Map(templates.map((t) => [t.id, t]))
+  const blockers: string[] = []
+  if (system) {
+    let needBridge = 0
+    let needImage = 0
+    for (const n of Object.values(lab.nodes)) {
+      const t = tmplById.get(n.template)
+      if (!t) continue
+      if (t.kind !== 'qemu' && system.datapath !== 'bridge') needBridge++
+      else if (t.kind === 'qemu' && t.available_images.length === 0 && !n.image) needImage++
+    }
+    if (needBridge > 0)
+      blockers.push(
+        `${needBridge} ${needBridge === 1 ? 'device needs' : 'devices need'} the bridge datapath (Linux + root) — this server runs the "${system.datapath}" datapath, so ${needBridge === 1 ? 'it' : 'they'} can't boot here`,
+      )
+    if (needImage > 0)
+      blockers.push(`${needImage} ${needImage === 1 ? 'device has' : 'devices have'} no disk image uploaded`)
+  }
 
   const addNetwork = async (kind: NetworkKind) => {
     setNetMenu(false)
@@ -193,14 +228,38 @@ export default function LabEditor() {
         {!anyRunning ? (
           <button
             onClick={async () => {
+              if (nodeCount === 0) {
+                setNotice('warn', 'This lab has no devices yet — add some before starting.')
+                return
+              }
+              if (blockers.length) {
+                // Everything is blocked: don't fire a start that will only
+                // produce a wall of Sessions errors; explain instead.
+                setNotice('warn', `Can't start on this server — ${blockers.join('; ')}.`)
+                return
+              }
               pushLog('info', 'starting lab…')
               try {
                 await api.startLab(lab.id)
               } catch (e) {
-                pushLog('error', `start: ${e instanceof Error ? e.message : e}`)
+                setNotice('error', `start: ${e instanceof Error ? e.message : e}`)
               }
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'var(--accent)', color: '#08211d', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            title={blockers.length ? blockers.join('; ') : 'Boot every device in this lab'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              border: blockers.length ? '1px solid var(--amber)' : 'none',
+              background: blockers.length ? 'rgba(232,179,72,.15)' : 'var(--accent)',
+              color: blockers.length ? 'var(--amber)' : '#08211d',
+              borderRadius: 9,
+              padding: '7px 13px',
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
           >
             <Play size={13} /> Start lab
           </button>
@@ -339,6 +398,66 @@ export default function LabEditor() {
           {devicesOpen && (
             <div className="absolute inset-y-0 left-0 z-30" style={{ boxShadow: 'var(--shadow)' }}>
               <Palette onClose={() => setDevicesOpen(false)} />
+            </div>
+          )}
+
+          {/* pre-flight banner: this lab can't fully start on this server */}
+          {!anyRunning && blockers.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 56,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(232,179,72,.1)',
+                border: '1px solid rgba(232,179,72,.4)',
+                borderRadius: 12,
+                padding: '9px 14px',
+                fontSize: 12,
+                color: 'var(--amber)',
+                boxShadow: 'var(--shadow)',
+                zIndex: 14,
+                maxWidth: '76%',
+                lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ fontWeight: 700 }}>Heads up:</strong>{' '}
+              {blockers.join('; ')}. Run this lab on a Linux host with{' '}
+              <code style={{ fontFamily: "'IBM Plex Mono',monospace" }}>--datapath bridge</code>, or
+              use QEMU devices (Linux/OpenWrt) which boot here.
+            </div>
+          )}
+
+          {/* transient notice: start failures & server errors, dismissible */}
+          {notice && (
+            <div
+              onClick={dismissNotice}
+              title="Dismiss"
+              style={{
+                position: 'absolute',
+                bottom: 52,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'var(--panel)',
+                border: `1px solid ${notice.level === 'error' ? 'var(--red)' : notice.level === 'warn' ? 'var(--amber)' : 'var(--border2)'}`,
+                borderRadius: 12,
+                padding: '10px 15px',
+                fontSize: 12.5,
+                color: notice.level === 'error' ? 'var(--red)' : notice.level === 'warn' ? 'var(--amber)' : 'var(--text)',
+                boxShadow: 'var(--shadow)',
+                zIndex: 16,
+                maxWidth: '80%',
+                lineHeight: 1.5,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 9,
+                animation: 'fadeUp .2s ease',
+              }}
+            >
+              <span style={{ marginTop: 1 }}>{notice.level === 'error' ? '⚠' : notice.level === 'warn' ? '⚠' : 'ℹ'}</span>
+              <span style={{ flex: 1 }}>{notice.text}</span>
+              <span style={{ opacity: 0.6, fontSize: 11 }}>✕</span>
             </div>
           )}
 

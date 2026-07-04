@@ -94,6 +94,10 @@ interface AppStore {
   agentConnected: boolean
   agentSocket: WebSocket | null
 
+  // A transient banner surfaced near the canvas (start failures, warnings)
+  // so problems aren't buried in the Sessions tab.
+  notice: { level: 'error' | 'warn' | 'info'; text: string; at: number } | null
+
   // inspector state
   inspectorTab: InspectorTab
   inspectorNode: string | null // node selected in the Configs tab
@@ -124,6 +128,8 @@ interface AppStore {
   record(kind: SessionKind, text: string): void
   clearSessions(): void
   pushLog(level: string, message: string): void
+  setNotice(level: 'error' | 'warn' | 'info', text: string): void
+  dismissNotice(): void
 }
 
 // Strato-voice one-liners for the audit log.
@@ -185,6 +191,7 @@ export const useStore = create<AppStore>((set, get) => ({
   agentConnected: false,
   agentSocket: null,
 
+  notice: null,
   inspectorTab: 'console',
   inspectorNode: null,
   checks: [],
@@ -204,6 +211,7 @@ export const useStore = create<AppStore>((set, get) => ({
       agentBusy: false,
       agentConnected: false,
       agentSocket: null,
+      notice: null,
       inspectorTab: 'console',
       inspectorNode: null,
       checks: [],
@@ -221,6 +229,7 @@ export const useStore = create<AppStore>((set, get) => ({
       states: lab.states,
       consoles: [],
       activeConsole: null,
+      notice: null,
       inspectorTab: 'console',
       inspectorNode: null,
       sessions: [],
@@ -323,6 +332,9 @@ export const useStore = create<AppStore>((set, get) => ({
           }
         } else if (ev.type === 'log') {
           get().pushLog(ev.level, ev.message)
+          // Surface server-side errors (e.g. a node failing to start) as a
+          // visible banner, not just a Sessions entry.
+          if (ev.level === 'error') get().setNotice('error', ev.message)
         }
       } catch {
         /* ignore malformed */
@@ -480,6 +492,14 @@ export const useStore = create<AppStore>((set, get) => ({
 
   pushLog(level, message) {
     get().record(level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'sys', message)
+  },
+
+  setNotice(level, text) {
+    set({ notice: { level, text, at: Date.now() } })
+  },
+
+  dismissNotice() {
+    set({ notice: null })
   },
 }))
 

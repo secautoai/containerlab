@@ -104,6 +104,8 @@ export interface QemuSpec {
   mgmt_nic: boolean
 }
 
+export type NodeKind = 'qemu' | 'netns' | 'container'
+
 export interface Template {
   id: string
   name: string
@@ -115,6 +117,7 @@ export interface Template {
   max_interfaces: number
   iface_pattern: string
   console: ConsoleKind
+  kind: NodeKind
   qemu: QemuSpec
   notes: string
   config_guide: string
