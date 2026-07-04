@@ -300,16 +300,14 @@ impl NativeSupervisor {
                 let cfg_dir = spec.socket_dir.join("frr");
                 pidfiles = start_frr(&ns, spec, &cfg_dir).await?;
                 // Console convenience: plain `vtysh` finds this node's
-                // vty sockets via an alias in the shell rcfile.
+                // vty sockets via the pathspace alias in the shell rcfile.
                 let rc = spec.socket_dir.join("bashrc");
                 std::fs::write(
                     &rc,
                     format!(
-                        "alias vtysh='vtysh --vty_socket {}'\nPS1='{}:\\w# '\n\
+                        "alias vtysh='vtysh -N {}'\nPS1='{}:\\w# '\n\
                          echo 'NetPilot FRR node {} — type vtysh for the router CLI'\n",
-                        cfg_dir.display(),
-                        spec.name,
-                        spec.name
+                        ns, spec.name, spec.name
                     ),
                 )?;
                 rcfile = Some(rc);
@@ -530,6 +528,9 @@ impl NativeSupervisor {
                     }
                 }
                 let _ = run("ip", &["netns", "del", ns]).await;
+                // Remove this node's FRR pathspace runtime dir (harmless if
+                // it was a non-FRR netns node).
+                let _ = std::fs::remove_dir_all(format!("/var/run/frr/{ns}"));
             }
             ConsoleTarget::Docker { name, .. } => {
                 let _ = run("docker", &["rm", "-f", name]).await;
@@ -556,6 +557,10 @@ async fn start_frr(
             "FRR is not installed on the lab host (apt install frr)",
         ));
     }
+    // Start from clean runtime dirs: a prior failed run can leave
+    // root-owned pidfiles/sockets that the frr user then can't lock
+    // ("Permission denied" creating the pid file).
+    let _ = std::fs::remove_dir_all(cfg_dir);
     std::fs::create_dir_all(cfg_dir)?;
     let config = spec
         .startup_config
@@ -568,16 +573,35 @@ async fn start_frr(
         cfg_dir.join("vtysh.conf"),
         "service integrated-vtysh-config\n",
     )?;
-    // Daemons drop privileges to the packaged frr user — it must own the
-    // runtime dir (pidfiles, vty sockets).
-    let _ = tokio::process::Command::new("chown")
-        .args(["-R", "frr:frr", cfg_dir.to_str().unwrap()])
-        .output()
-        .await;
+
+    // Per-node FRR "pathspace": netns isolates the network but NOT /run, so
+    // without this every node's daemons would collide on the shared
+    // /var/run/frr sockets (zserv.api, mgmtd). `-N <ns>` relocates each
+    // node's runtime sockets under /var/run/frr/<ns>/ so multi-node FRR
+    // labs work. The dir must be owned by the packaged frr user.
+    let pathspace = ns;
+    let run_dir = std::path::PathBuf::from(format!("/var/run/frr/{pathspace}"));
+    let _ = std::fs::remove_dir_all(&run_dir);
+    std::fs::create_dir_all(&run_dir)?;
+    // Daemons drop privileges to the frr user — it must own both dirs.
+    for d in [cfg_dir, run_dir.as_path()] {
+        let _ = tokio::process::Command::new("chown")
+            .args(["-R", "frr:frr", d.to_str().unwrap()])
+            .output()
+            .await;
+    }
 
     let lc = config.to_lowercase();
-    let mut daemons = vec!["zebra", "staticd", "mgmtd"];
+    // mgmtd first (FRR 9+ management daemon), then zebra, then the protocol
+    // daemons the config needs. On FRR 9+ only mgmtd and zebra accept a
+    // config file; the protocol daemons take their config from mgmtd, so we
+    // launch them bare and push the integrated config with `vtysh -f` after
+    // (which also works on FRR 8.x, where every daemon starts empty and gets
+    // configured the same way).
+    let mut daemons = vec!["mgmtd", "zebra"];
     for (needle, daemon) in [
+        ("ip route ", "staticd"),
+        ("ipv6 route ", "staticd"),
         ("router ospf", "ospfd"),
         ("router bgp", "bgpd"),
         ("mpls ldp", "ldpd"),
@@ -585,45 +609,85 @@ async fn start_frr(
         ("router rip", "ripd"),
         ("router pim", "pimd"),
     ] {
-        if lc.contains(needle) {
+        if lc.contains(needle) && !daemons.contains(&daemon) {
             daemons.push(daemon);
         }
     }
     // EVPN lives in bgpd; "address-family l2vpn evpn" already matches bgp.
 
+    // On FRR 9+/10.x only zebra still accepts a config file; mgmtd and the
+    // protocol daemons take their config from the vtysh push below. (On FRR
+    // 8.x mgmtd doesn't exist and this is skipped anyway.)
+    let takes_config_file = |daemon: &str| daemon == "zebra";
     let mut pidfiles = Vec::new();
     for daemon in daemons {
         let bin = format!("/usr/lib/frr/{daemon}");
         if !std::path::Path::new(&bin).exists() {
             continue; // mgmtd doesn't exist on FRR 8.x — skip quietly
         }
-        let pidfile = cfg_dir.join(format!("{daemon}.pid"));
-        let out = tokio::process::Command::new("ip")
-            .args([
-                "netns",
-                "exec",
-                ns,
-                &bin,
-                "-d",
-                "-f",
-                conf_path.to_str().unwrap(),
-                "--pid_file",
-                pidfile.to_str().unwrap(),
-                "--vty_socket",
-                cfg_dir.to_str().unwrap(),
-                "-i",
-                pidfile.to_str().unwrap(),
-            ])
-            .output()
+        // Pidfiles go in the pathspace run_dir (freshly created and wholly
+        // frr-owned); cfg_dir also holds the root-created .err logs, and
+        // mixing owners there tripped some daemons' pid-lock creation.
+        let pidfile = run_dir.join(format!("{daemon}.pid"));
+        let err_log = cfg_dir.join(format!("{daemon}.err"));
+        let mut args: Vec<String> = vec![
+            "netns".into(),
+            "exec".into(),
+            ns.into(),
+            bin.clone(),
+            "-d".into(),
+            "-N".into(),
+            pathspace.to_string(),
+            "--pid_file".into(),
+            pidfile.to_string_lossy().into_owned(),
+        ];
+        if takes_config_file(daemon) {
+            args.push("-f".into());
+            args.push(conf_path.to_string_lossy().into_owned());
+        }
+        // Never pipe the daemon's stdout/stderr: `-d` daemonizes but the
+        // child keeps inherited pipes open, so `.output()` would block on
+        // EOF forever. Send stdout to null, stderr to a log we can read on
+        // failure, and wait only for process exit via `.status()`.
+        let errf = std::fs::File::create(&err_log)?;
+        let status = tokio::process::Command::new("ip")
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(errf))
+            .status()
             .await?;
-        if !out.status.success() {
+        if !status.success() {
+            let stderr = std::fs::read_to_string(&err_log).unwrap_or_default();
             return Err(ApiError::internal(format!(
                 "{daemon}: {}",
-                String::from_utf8_lossy(&out.stderr)
+                stderr.trim()
             )));
         }
         pidfiles.push(pidfile);
     }
+
+    // Push the integrated running config into the daemons over the
+    // pathspace's vty sockets. Idempotent, and the portable way to
+    // configure protocol daemons across FRR versions (on FRR 9+ they take
+    // their config from here rather than a per-daemon -f).
+    let _ = tokio::process::Command::new("ip")
+        .args([
+            "netns",
+            "exec",
+            ns,
+            "vtysh",
+            "-N",
+            pathspace,
+            "-f",
+            &conf_path.to_string_lossy(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+
     Ok(pidfiles)
 }
 
