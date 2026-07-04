@@ -16,6 +16,25 @@ OPENROUTER_API_KEY=sk-or-… NETPILOT_AI_MODEL=deepseek/deepseek-v4-flash \
 Then browse to `http://<host>:8899` (default login **admin / admin** — change
 it). The service is persistent (`systemctl enable`d) and survives reboots.
 
+## Firmware images
+
+`deploy.sh` installs QEMU + Docker so VM and container node kinds can run.
+FRR and Linux-host nodes need no image; for the rest, fetch the free ones:
+
+```bash
+DATA=/var/lib/netpilot netpilot/deploy/fetch-images.sh
+```
+
+This downloads and installs the images that are **legitimately free and
+directly downloadable** — Alpine (host), OpenWrt (router/firewall), MikroTik
+RouterOS CHR, and the public Nokia SR Linux container — so those templates
+work with no manual upload. Proprietary NOS (Cisco, Arista, Juniper, Palo
+Alto, Fortinet) are gated behind vendor logins/licenses and can't be
+auto-fetched; download them from the vendor into
+`<data>/images/<template>/<version>/`. On a non-x86 host (e.g. the arm64 dev
+VM) the x86 images run under QEMU TCG (slower boots); SR Linux is multi-arch
+and runs natively.
+
 ## What it configures
 
 The lab host runs FRR **inside per-node network namespaces** with custom

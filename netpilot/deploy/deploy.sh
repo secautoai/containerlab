@@ -40,7 +40,12 @@ sudo rm -rf /opt/netpilot/ui /opt/netpilot/examples
 sudo cp -r "$NP/ui/dist" /opt/netpilot/ui
 sudo cp -r "$NP/examples" /opt/netpilot/examples
 
-echo "== 3. lab-host config for FRR-in-netns =="
+echo "== 3. lab-host runtimes + FRR-in-netns config =="
+# QEMU (VM node kinds; x86_64 images run under TCG on non-x86 hosts) and
+# Docker (container node kinds: SR Linux, cEOS, cRPD).
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get install -y -qq qemu-system-x86 qemu-utils docker.io unzip >/dev/null 2>&1 || true
+sudo systemctl enable --now docker >/dev/null 2>&1 || true
 # NetPilot owns FRR (runs it per-node in namespaces); the host's own frr
 # service would collide on the shared /run/frr sockets.
 sudo systemctl stop frr 2>/dev/null || true
