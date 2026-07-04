@@ -86,6 +86,20 @@ bridge for `cloud`, `nft masquerade` for NAT/management. Names are
 - System prompt encodes topology conventions (mgmt NIC, addressing hygiene)
   and vendor CLI knowledge lives in the model.
 
+### netpilot-db — accounts, RBAC, sharing (optional)
+Activated only when `NETPILOT_DB_URL` is set; otherwise the server is
+single-user with the file store and a synthetic local admin.
+- **Postgres** (sqlx): users (argon2 password hashes), roles
+  (`admin`/`operator`/`viewer`), lab ownership + `private`/`public`
+  visibility, per-user `view`/`edit` shares, firmware metadata (size, sha256),
+  persisted agent sessions, and an append-only `audit_log`.
+- **Redis** (optional): session-token store so bearer tokens are shared across
+  server instances / survive restarts; falls back to an in-process store.
+- **Effective access** — `lab_access(principal, lab)` folds owner + visibility
+  + shares + role into `View`/`Edit`/`Own`; `require_view`/`require_edit` are
+  the guards every lab-scoped handler calls. There is no global auth
+  middleware, so each route self-guards (tested by `tests/vm-rbac-nodes-test.sh`).
+
 ### netpilot-server — API
 axum, API-first (every UI action is a public endpoint):
 ```
@@ -102,15 +116,28 @@ GET/PUT /api/labs/:id/nodes/:nid/config     startup config
 GET/POST /api/labs/:id/networks        + PUT/DELETE
 GET/POST /api/labs/:id/links           + PUT/DELETE (impairment live-applies)
 GET/POST /api/labs/:id/annotations     + PUT/DELETE
-POST   /api/labs/:id/links/:lid/capture/start|stop
-GET    /api/labs/:id/links/:lid/capture.pcap
+POST   /api/labs/:id/nodes/:nid/interfaces/:iface/capture/start|stop
+GET    /api/labs/:id/nodes/:nid/interfaces/:iface/capture.pcap
+POST   /api/labs/:id/nodes/:nid/exec        run a command on the node console
+GET    /api/labs/:id/stats                  per-node cpu/rss (from /proc)
 GET    /api/labs/:id/export            zip download
 POST   /api/import                     zip/.unl/.clab.yml upload
-WS     /api/ws/events                  event stream
-WS     /api/ws/console/:lab/:node      xterm.js console bridge
+POST   /api/auth/login|logout · GET /api/auth/me      bearer-token auth
+GET/POST /api/users                    account management (admin)         ┐ only when
+PUT    /api/labs/:id/shares            grant/revoke per-user view|edit    │ NETPILOT_DB_URL
+GET    /api/labs/:id/sessions          persisted agent transcripts        ┘ is set
+WS     /api/ws/events                  event stream            (token via ?token=)
+WS     /api/ws/console/:lab/:node      xterm.js console bridge (token via ?token=)
+WS     /api/ws/vnc/:lab/:node          noVNC framebuffer bridge
 WS     /api/ws/agent/:lab              AI chat (streaming + tool transcript)
 ```
 Static files: serves `ui/dist` so the whole product is one binary + assets.
+
+**Node launchers.** `netpilot-qemu` runs VM nodes; a native launcher
+(`native.rs`) runs the imageless kinds directly on Linux — **netns** nodes
+(FRR-in-namespace with per-node socket pathspaces; Linux hosts) and
+**container** nodes (docker, veth-wired into the container netns). These need
+`--datapath bridge` (CAP_NET_ADMIN); the rootless UDP switch is QEMU-only.
 
 ## Data directory
 ```
@@ -118,7 +145,7 @@ Static files: serves `ui/dist` so the whole product is one binary + assets.
 <data>/labs/<uuid>/nodes/<uuid>/{disk.qcow2, config.iso, console.sock, qmp.sock}
 <data>/images/<template>/<version>/*.qcow2
 <data>/templates/*.yaml
-<data>/captures/<lab>/<link>.pcap
+<data>/captures/<lab>/<node>-<iface>.pcap
 ```
 
 ## Key decisions vs EVE-NG

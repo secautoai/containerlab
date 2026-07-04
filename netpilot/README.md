@@ -76,7 +76,10 @@ seeded (change it). Then:
 - **Lab ownership & sharing** — each lab has an owner and `private`/`public`
   visibility; owners grant per-user `view`/`edit` via the Share dialog
   (`/api/labs/{id}/shares`). The lab list and every lab route are filtered by
-  effective access.
+  effective access. There is no global auth middleware: each lab-scoped
+  handler self-guards with `require_view`/`require_edit`, so a read-only
+  collaborator can't reach another user's console, VNC, packet capture, or
+  config (covered by `tests/vm-rbac-nodes-test.sh`).
 - **Firmware library** — uploads record size + sha256 and an audit entry;
   `DELETE /api/images/{template}/{version}` removes an image (write access).
 - **Agent sessions** — every agent conversation is saved per (lab, user) and
@@ -85,6 +88,27 @@ seeded (change it). Then:
 
 Without `NETPILOT_DB_URL` none of this is active and the server behaves
 exactly as the single-user file-store build (`auth_enabled: false`).
+
+## Deploy on a Linux lab host
+
+macOS runs only the rootless QEMU datapath. To boot the FRR and container
+node kinds for real you need a Linux host with the **bridge datapath**.
+[`deploy/deploy.sh`](deploy/deploy.sh) does the whole install — release build,
+systemd service on `:8899`, QEMU + Docker, FRR-in-netns host config (masks the
+system `frr`, puts the protocol daemons' AppArmor profiles in complain mode),
+and a local Postgres so multi-user mode is on:
+
+```bash
+OPENROUTER_API_KEY=sk-or-… NETPILOT_AI_MODEL=deepseek/deepseek-v4-flash \
+  netpilot/deploy/deploy.sh                              # → http://<host>:8899 (admin/admin)
+DATA=/var/lib/netpilot netpilot/deploy/fetch-images.sh  # free NOS images
+```
+
+`fetch-images.sh` pulls the images that are legitimately free and directly
+downloadable — Alpine (host), OpenWrt, MikroTik CHR, and the public Nokia SR
+Linux container. Proprietary NOS (Cisco/Arista/Juniper/PAN/Forti) stay gated
+behind vendor logins; upload those from the Images page. Full notes:
+[deploy/README.md](deploy/README.md).
 
 ## Node kinds & device support
 
@@ -203,11 +227,22 @@ cd ui && npm run build        # typecheck + bundle
 
 Crates: `netpilot-core` (domain model, store, events) ·
 `netpilot-net` (UDP switch, Linux plumbing) · `netpilot-qemu` (cmdline,
-overlays, config media, QMP, supervisor) · `netpilot-ai` (Claude client,
-agent loop, tools) · `netpilot-server` (axum API + UI hosting).
+overlays, config media, QMP, supervisor) · `netpilot-ai` (Claude/OpenRouter
+client, agent loop, tools) · `netpilot-db` (Postgres accounts/RBAC/sharing +
+Redis session tokens) · `netpilot-server` (axum API, native netns/docker node
+launcher, UI hosting).
+
+Multi-user integration tests need a real Postgres + Redis (a Linux host — see
+[deploy](deploy/README.md)):
+
+```bash
+NETPILOT_BIN=./target/release/netpilot tests/vm-integration-test.sh   # auth · sharing · firmware · audit
+NETPILOT_BIN=./target/release/netpilot tests/vm-rbac-nodes-test.sh    # per-route RBAC on nodes/topology/capture/ws
+```
 
 Docs: [ROADMAP](docs/ROADMAP.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[STATUS](docs/STATUS.md) · [research notes](docs/research/).
+[STATUS](docs/STATUS.md) · [research notes](docs/research/) ·
+[deploy](deploy/README.md).
 
 ## Verified
 
