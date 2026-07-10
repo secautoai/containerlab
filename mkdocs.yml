@@ -177,6 +177,7 @@ nav:
       - Nokia SR Linux and Juniper cJunosEvolved: lab-examples/srl-cjunosevolved.md
       - Nokia SR Linux and Arrcus ArcOS: lab-examples/srl-arcos.md
       - FRR: lab-examples/frr01.md
+      - CCNP study labs: lab-examples/ccnp.md
       - Cumulus Linux and FRR: lab-examples/cvx01.md
       - Cumulus Linux (docker runtime) and Host: lab-examples/cvx02.md
       - BGP VPLS between Nokia and Juniper: lab-examples/bgp-vpls-nok-jun.md

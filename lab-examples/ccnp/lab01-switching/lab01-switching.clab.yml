@@ -1,0 +1,50 @@
+# Lab 01 - Enterprise switching: VLANs, trunking, EtherChannel, Rapid-PVST+
+#
+#        sw1 ========= sw2        == : 2x links -> LACP Port-channel 1
+#          \            /
+#           \          /
+#            \        /
+#              sw3                 sw3 = access switch
+#             /    \
+#           pc1    pc2             VLAN 10 / VLAN 20
+name: ccnp-lab01
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_L2_IMAGE:=vrnetlab/cisco_iol:L2-17.12.01}
+      type: l2
+    linux:
+      image: wbitt/network-multitool:3.22.2
+
+  nodes:
+    sw1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/sw1.partial.cfg
+    sw2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/sw2.partial.cfg
+    sw3:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/sw3.partial.cfg
+    pc1:
+      kind: linux
+      exec:
+        - ip addr add 10.1.10.11/24 dev eth1
+        - ip route replace default via 10.1.10.1 dev eth1
+    pc2:
+      kind: linux
+      exec:
+        - ip addr add 10.1.20.12/24 dev eth1
+        - ip route replace default via 10.1.20.1 dev eth1
+
+  links:
+    # sw1 <-> sw2: future Port-channel 1 (two members)
+    - endpoints: ["sw1:Ethernet0/1", "sw2:Ethernet0/1"]
+    - endpoints: ["sw1:Ethernet0/2", "sw2:Ethernet0/2"]
+    # distribution -> access
+    - endpoints: ["sw1:Ethernet0/3", "sw3:Ethernet0/1"]
+    - endpoints: ["sw2:Ethernet0/3", "sw3:Ethernet0/2"]
+    # access ports
+    - endpoints: ["sw3:Ethernet0/3", "pc1:eth1"]
+    - endpoints: ["sw3:Ethernet1/0", "pc2:eth1"]

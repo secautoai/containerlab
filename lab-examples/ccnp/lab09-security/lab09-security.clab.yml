@@ -1,0 +1,36 @@
+# Lab 09 - Infrastructure security: hardening, AAA, ACLs, uRPF, CoPP
+#
+#   pc1 (untrusted) --- r1 (edge) --- r2 (core) --- r3 (services)
+#   10.9.1.100          .1  |  .1        .2  .1        .2  |
+#                    10.9.1.0/24   10.9.12.0/30  10.9.23.0/30
+#                                                 Lo1 10.9.3.1/24 ("server LAN",
+#                                                  also the trusted mgmt subnet)
+name: ccnp-lab09
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_IMAGE:=vrnetlab/cisco_iol:17.12.01}
+    linux:
+      image: wbitt/network-multitool:3.22.2
+
+  nodes:
+    r1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r1.partial.cfg
+    r2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r2.partial.cfg
+    r3:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r3.partial.cfg
+    pc1:
+      kind: linux
+      exec:
+        - ip addr add 10.9.1.100/24 dev eth1
+        - ip route replace default via 10.9.1.1 dev eth1
+
+  links:
+    - endpoints: ["pc1:eth1", "r1:Ethernet0/1"]        # 10.9.1.0/24 (untrusted)
+    - endpoints: ["r1:Ethernet0/2", "r2:Ethernet0/1"]  # 10.9.12.0/30
+    - endpoints: ["r2:Ethernet0/2", "r3:Ethernet0/1"]  # 10.9.23.0/30

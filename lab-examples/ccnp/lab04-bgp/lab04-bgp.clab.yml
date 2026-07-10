@@ -1,0 +1,45 @@
+# Lab 04 - BGP peering & policy
+#
+#                AS 65001 (enterprise)
+#                       r1 (RR)
+#                      /  \
+#                    r2 -- r3          <- iBGP over OSPF underlay
+#            (edge)  |      |  (edge)
+#  ==================|======|=================
+#      AS 65100      |      |     AS 65200
+#       (ISP-A)  r4 -+--+---+- r5 (ISP-B)
+#                       |
+#                  r4 <---> r5 (inter-ISP)
+#
+# ISP routers come fully configured; your job is AS 65001.
+name: ccnp-lab04
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_IMAGE:=vrnetlab/cisco_iol:17.12.01}
+
+  nodes:
+    r1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r1.partial.cfg
+    r2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r2.partial.cfg
+    r3:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r3.partial.cfg
+    r4:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r4.partial.cfg
+    r5:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r5.partial.cfg
+
+  links:
+    - endpoints: ["r1:Ethernet0/1", "r2:Ethernet0/1"]  # 10.0.12.0/24
+    - endpoints: ["r1:Ethernet0/2", "r3:Ethernet0/1"]  # 10.0.13.0/24
+    - endpoints: ["r2:Ethernet0/2", "r3:Ethernet0/2"]  # 10.0.23.0/24
+    - endpoints: ["r2:Ethernet0/3", "r4:Ethernet0/1"]  # 100.64.24.0/30 eBGP to ISP-A
+    - endpoints: ["r3:Ethernet0/3", "r5:Ethernet0/1"]  # 100.64.35.0/30 eBGP to ISP-B
+    - endpoints: ["r4:Ethernet0/2", "r5:Ethernet0/2"]  # 100.64.45.0/30 inter-ISP

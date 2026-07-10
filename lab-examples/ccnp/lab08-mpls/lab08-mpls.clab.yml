@@ -1,0 +1,35 @@
+# Lab 08 - MPLS L3VPN (LDP + VRF + MP-BGP VPNv4 + PE-CE eBGP)
+#
+#  ce1 ------ pe1 ------ p1 ------ pe2 ------ ce2
+#  AS 65010  |         AS 65000          |  AS 65020
+#  172.16.10.0/24  (provider core)       172.16.20.0/24
+#             \__________VRF CUST-A_______/
+name: ccnp-lab08
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_IMAGE:=vrnetlab/cisco_iol:17.12.01}
+
+  nodes:
+    ce1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/ce1.partial.cfg
+    pe1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/pe1.partial.cfg
+    p1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/p1.partial.cfg
+    pe2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/pe2.partial.cfg
+    ce2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/ce2.partial.cfg
+
+  links:
+    - endpoints: ["ce1:Ethernet0/1", "pe1:Ethernet0/1"]  # 192.168.10.0/30
+    - endpoints: ["pe1:Ethernet0/2", "p1:Ethernet0/1"]   # 10.0.0.0/30
+    - endpoints: ["p1:Ethernet0/2", "pe2:Ethernet0/1"]   # 10.0.0.4/30
+    - endpoints: ["pe2:Ethernet0/2", "ce2:Ethernet0/1"]  # 192.168.20.0/30

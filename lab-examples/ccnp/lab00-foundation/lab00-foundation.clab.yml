@@ -1,0 +1,37 @@
+# Lab 00 - Containerlab foundation (free images, no Cisco software required)
+# pc1 --- r1 --- r2 --- pc2   (FRR routers, static routing)
+name: ccnp-lab00
+
+topology:
+  kinds:
+    linux:
+      image: wbitt/network-multitool:3.22.2
+
+  nodes:
+    r1:
+      kind: linux
+      image: quay.io/frrouting/frr:10.5.1
+      binds:
+        - configs/r1/daemons:/etc/frr/daemons
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+    r2:
+      kind: linux
+      image: quay.io/frrouting/frr:10.5.1
+      binds:
+        - configs/r2/daemons:/etc/frr/daemons
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+    pc1:
+      kind: linux
+      exec:
+        - ip addr add 192.168.1.10/24 dev eth1
+        - ip route replace default via 192.168.1.1 dev eth1
+    pc2:
+      kind: linux
+      exec:
+        - ip addr add 192.168.2.10/24 dev eth1
+        - ip route replace default via 192.168.2.1 dev eth1
+
+  links:
+    - endpoints: ["r1:eth1", "r2:eth1"]   # 10.0.12.0/30
+    - endpoints: ["pc1:eth1", "r1:eth2"]  # 192.168.1.0/24
+    - endpoints: ["pc2:eth1", "r2:eth2"]  # 192.168.2.0/24

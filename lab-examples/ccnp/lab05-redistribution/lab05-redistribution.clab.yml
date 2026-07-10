@@ -1,0 +1,35 @@
+# Lab 05 - Redistribution & path control
+#
+#      EIGRP 100          |         OSPF 1
+#                    r2 (border)
+#      e0/1        /      |       \        e0/1
+#         r1 -----+       |        +----- r4 --- Lo100 198.51.100.0/24
+#         |        \      |       /       |      (NOT in any IGP - reached
+#         Lo1,Lo2    r3 (border)           Lo1,Lo2   via tracked defaults)
+#      172.16.1-2.0/24    |        192.168.41-42.0/24
+name: ccnp-lab05
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_IMAGE:=vrnetlab/cisco_iol:17.12.01}
+
+  nodes:
+    r1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r1.partial.cfg
+    r2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r2.partial.cfg
+    r3:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r3.partial.cfg
+    r4:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r4.partial.cfg
+
+  links:
+    - endpoints: ["r1:Ethernet0/1", "r2:Ethernet0/1"]  # 10.0.12.0/24 (EIGRP)
+    - endpoints: ["r1:Ethernet0/2", "r3:Ethernet0/1"]  # 10.0.13.0/24 (EIGRP)
+    - endpoints: ["r2:Ethernet0/2", "r4:Ethernet0/1"]  # 10.0.24.0/24 (OSPF)
+    - endpoints: ["r3:Ethernet0/2", "r4:Ethernet0/2"]  # 10.0.34.0/24 (OSPF)

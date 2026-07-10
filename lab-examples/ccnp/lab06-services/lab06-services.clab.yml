@@ -1,0 +1,50 @@
+# Lab 06 - IP services: HSRP, NAT/PAT, DHCP, NTP, syslog, SNMP
+#
+#   pc1  pc2                      r3 = "ISP" (pre-configured):
+#     \  /                             Lo0 198.51.100.53 = "internet host"
+#      sw1                             NTP master
+#     /    \
+#   r1 ---- r2      <- HSRP pair, VIP 10.1.10.1
+#     \    /
+#      r3 (ISP)
+name: ccnp-lab06
+
+topology:
+  kinds:
+    cisco_iol:
+      image: ${CCNP_IOL_IMAGE:=vrnetlab/cisco_iol:17.12.01}
+    linux:
+      image: wbitt/network-multitool:3.22.2
+
+  nodes:
+    r1:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r1.partial.cfg
+    r2:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r2.partial.cfg
+    r3:
+      kind: cisco_iol
+      startup-config: ${CCNP_CFG:=configs}/r3.partial.cfg
+    sw1:
+      kind: cisco_iol
+      image: ${CCNP_IOL_L2_IMAGE:=vrnetlab/cisco_iol:L2-17.12.01}
+      type: l2
+      startup-config: ${CCNP_CFG:=configs}/sw1.partial.cfg
+    pc1:
+      kind: linux
+      exec:
+        - ip addr add 10.1.10.11/24 dev eth1
+        - ip route replace default via 10.1.10.1 dev eth1
+    pc2:
+      kind: linux
+      # no IP on purpose - pc2 gets its address via DHCP in task 4:
+      #   docker exec clab-ccnp-lab06-pc2 udhcpc -i eth1
+
+  links:
+    - endpoints: ["pc1:eth1", "sw1:Ethernet0/1"]
+    - endpoints: ["pc2:eth1", "sw1:Ethernet0/2"]
+    - endpoints: ["sw1:Ethernet0/3", "r1:Ethernet0/1"]  # LAN 10.1.10.0/24
+    - endpoints: ["sw1:Ethernet1/0", "r2:Ethernet0/1"]  # LAN 10.1.10.0/24
+    - endpoints: ["r1:Ethernet0/2", "r3:Ethernet0/1"]   # 203.0.113.0/30
+    - endpoints: ["r2:Ethernet0/2", "r3:Ethernet0/2"]   # 203.0.113.4/30
