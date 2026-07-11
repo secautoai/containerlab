@@ -6,7 +6,7 @@ areas, default-route origination and cryptographic authentication.
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENCOR 3.2.b** (OSPFv2: neighbor adjacencies, point-to-point vs broadcast, passive interfaces, areas), **ENARSI 1.8** (network types, path preference, operations, areas/LSAs, summarization, filtering, stub/NSSA, authentication) |
+| Blueprint mapping | **ENCOR 3.2.b** (OSPFv2: neighbor adjacencies, point-to-point vs broadcast, passive interfaces, areas), **ENARSI 1.10** (network types, path preference, operations, areas/LSAs, summarization, filtering, stub/NSSA, authentication) |
 | Nodes / RAM | 4× IOL / ~3 GB |
 | Estimated time | 3–4 h |
 
@@ -79,7 +79,9 @@ O IA  10.0.34.0/24 [110/30] via 10.0.12.2, ...
 O IA  172.31.4.1/32 [110/31] via 10.0.12.2, ...
 ```
 
-Notes: `FULL/DR` means the *neighbor* is the DR for that segment. `O IA` = inter-area (Type-3
+Notes: `FULL/DR` means the *neighbor* is the DR for that segment — and since DR elections are
+**non-preemptive**, your DR/BDR columns depend on the order/timing in which you enabled OSPF
+(configure r2 within r1's 40 s wait timer and the higher RID wins instead). `O IA` = inter-area (Type-3
 LSA from an ABR). If a neighbor hangs in `EXSTART/EXCHANGE`, think MTU mismatch; stuck `INIT` =
 one-way hellos; no neighbor at all = area/subnet/timer/authentication mismatch — the four
 classics ENARSI loves.
@@ -234,9 +236,13 @@ r2# show ip route 192.168.44.0              ! arrives as O E2 - translated by r3
 r4# show ip route ospf | include 0.0.0.0    ! O*N2 default from r3
 ```
 
-Why `default-information-originate` on r3's NSSA statement? An NSSA blocks Type-5s but does
-**not** auto-generate a default unless told to (totally-NSSA `no-summary` would). r4 needs that
-default to reach the 203.0.113.0/24 external.
+Why `default-information-originate` on r3's NSSA statement? Careful — **not** for
+203.0.113.0/24: r3 is simultaneously the NSSA ABR *and* an ASBR, and by default it injects its
+own redistributed prefixes into area 2 as Type-7 too (verify: `show ip route 203.0.113.0` on r4
+shows `O N2` even without the default; the `area 2 nssa no-redistribution` keyword would
+suppress that copy — a favorite exam knob). The NSSA default exists for **Type-5-only**
+destinations that the NSSA blocks — like the domain default you'll originate in task 8. An NSSA
+does not auto-generate that default unless told to (totally-NSSA `no-summary` would).
 
 ## Task 8 — domain default route
 
@@ -290,8 +296,11 @@ Map every section to its LSA type and answer:
 
 ## Challenges
 
-1. Filter the 172.31.4.0/24 prefix from entering area 1 using `area 1 range ... not-advertise`
-   — wrong tool? Prove it, then do it correctly with a prefix-list + `area filter-list`.
+1. First revert area 1 to a normal area (`no area 1 stub` on r1 **and** r2 — totally stubby
+   already filters every Type-3, leaving nothing to demonstrate). Then: filter the
+   172.31.4.1/32 route from entering area 1 using `area 1 range ... not-advertise` — wrong
+   tool? Prove it (hint: `area X range` matches prefixes *from* area X), then do it correctly
+   with a prefix-list + `area filter-list`.
 2. Convert the r2↔r3 link to hello/dead 1/4 (fast convergence, pre-BFD style) without dropping
    the adjacency for more than a few seconds.
 3. Predict, then verify: what happens to r4's default route if you change area 2 to

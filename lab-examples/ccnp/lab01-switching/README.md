@@ -48,8 +48,10 @@ sw1# show spanning-tree summary      ! note the default STP mode
 sw1# show cdp neighbors              ! verify the cabling matches the diagram
 ```
 
-With everything in VLAN 1 and STP running, the sw1–sw2–sw3 triangle already has one port
-**blocking** — find it:
+With everything in VLAN 1 and STP running, the four inter-switch segments (two parallel
+sw1–sw2 links + the two triangle legs) leave **two ports blocking** — find both and explain
+each (3 bridges keep V−1 = 2 segments forwarding; the other 4−2 = 2 segments each park one
+Altn port):
 
 ```
 sw1# show spanning-tree vlan 1
@@ -76,7 +78,9 @@ practice (a switch with a higher revision number can't overwrite your VLAN datab
 
 ## Task 2 — 802.1Q trunks (sw1↔sw3, sw2↔sw3)
 
-IOL-L2 supports ISL and dot1q, so the encapsulation must be set before trunk mode. On sw1:
+IOL-L2's CLI still offers ISL alongside dot1q (default `negotiate`), so the encapsulation must
+be pinned before trunk mode — but only 802.1Q actually forwards traffic on this image; ISL is a
+legacy CLI leftover. On sw1:
 
 ```
 interface Ethernet0/3
@@ -183,11 +187,11 @@ Interface           Role Sts Cost      Prio.Nbr Type
 ------------------- ---- --- --------- -------- --------------------------------
 Et0/1               Root FWD 100       128.2    P2p
 Et0/2               Altn BLK 100       128.3    P2p
-Et0/3               Desg FWD 100       128.4    P2p
 ```
 
-For VLAN 20 the roles flip (`Et0/2` root, `Et0/1` blocking) — per-VLAN load sharing of the
-uplinks. Questions to answer (all fair game on ENCOR):
+(Only the two trunks appear — the PC-facing ports join VLANs 10/20 in task 5 and will show up
+here afterwards.) For VLAN 20 the roles flip (`Et0/2` root, `Et0/1` blocking) — per-VLAN load
+sharing of the uplinks. Questions to answer (all fair game on ENCOR):
 
 1. Why is sw3 never root? (both distribution switches advertise better priority)
 2. On sw2, which port is the root port for VLAN 10 and why is it Po1? (lowest path cost to root)

@@ -29,12 +29,16 @@ pc1 can ping 10.9.3.1 out of the box; by the end, only exactly what policy allow
 ./deploy.sh deploy lab09 && ./deploy.sh ssh 9 r1
 ```
 
-> **Safety net:** if you ever lock yourself out of SSH, the console is always there:
-> `docker exec -it clab-ccnp-lab09-r1 telnet 127.0.0.1 5000`.
+> **Safety net:** if you ever lock yourself out of SSH, the IOL console is on the container's
+> stdio: `docker attach clab-ccnp-lab09-r1` (detach with `Ctrl-P Ctrl-Q` — **not** Ctrl-C,
+> which kills the container).
 
 ## Task 1 — device hardening & management-plane control
 
-On r1:
+Two stages on r1 — hardening first, then the VTY access filter. Order matters: one of the
+tests below only works *before* the filter exists.
+
+**Stage A — hardening + brute-force protection:**
 
 ```
 enable secret S3cure-Enable!
@@ -45,7 +49,23 @@ banner motd ^
 login block-for 120 attempts 3 within 60
 login on-failure log
 login on-success log
-!
+```
+
+- `enable secret` (hashed; type 9/scrypt on modern IOS) vs `enable password` (reversible) —
+  `show run | include enable` and compare.
+- `login block-for` = brute-force quiet period; watch it work **now, while pc1 can still open
+  connections**: from pc1 `ssh wrong@10.9.1.1` three times with bad passwords →
+  `%SEC_LOGIN-2-SYSTEM_MSG` + a 120 s quiet period (`show login`). During the quiet period
+  **all** logins are refused — including yours — unless you whitelist trusted sources, so add
+  that exception right away (it references the ACL you're about to build):
+
+    ```
+    login quiet-mode access-class ACL-MGMT
+    ```
+
+**Stage B — restrict who may even open a VTY session:**
+
+```
 ip access-list standard ACL-MGMT
  permit 10.9.3.0 0.0.0.255
  permit 172.20.20.0 0.0.0.255
@@ -57,21 +77,17 @@ line vty 0 4
  transport input ssh
 ```
 
-Every line has an exam answer attached:
-
-- `enable secret` (hashed; type 9/scrypt on modern IOS) vs `enable password` (reversible) —
-  `show run | include enable` and compare.
-- `login block-for` = brute-force quiet period; watch it work: from pc1
-  `ssh wrong@10.9.1.1` three times with bad passwords → `%SEC_LOGIN-2-SYSTEM_MSG` + a 120 s
-  lockout (`show login`).
-- The VTY `access-class` restricts *who may even open* the session. Two lab-specific details:
-  `172.20.20.0/24` keeps the **containerlab management network** working (adjust if yours
-  differs), and `vrf-also` is required because that management SSH arrives via the `clab-mgmt`
-  VRF — omit it and you're managing r1 by console only (try it, read `show users`, put it
-  back).
-- Test the deny: `ssh admin@10.9.1.1` from **pc1** (untrusted) → connection refused +
+- Two lab-specific details: `172.20.20.0/24` is the **containerlab management network** (this
+  lab's topology pins it to that value; adjust the ACL if you changed it), and `vrf-also` is
+  required because that management SSH arrives via the `clab-mgmt` VRF — omit it and you're
+  managing r1 by console only (try it, read `show users`, put it back).
+- Test the deny: `ssh admin@10.9.1.1` from **pc1** (untrusted) → connection **refused** +
   `%SEC-6-IPACCESSLOGS` log entry. From r3 (`ssh -l admin 10.9.12.1` sourced from Lo1:
   `ip ssh source-interface Loopback1` first) → works.
+- Connect the two stages for the exam: with the access-class in place, pc1 can no longer even
+  *attempt* passwords (refused at TCP connect — refused connections don't count as login
+  failures), so `login block-for` now only guards against brute force from the *permitted*
+  management sources. Defense in depth, each layer with a distinct job.
 
 ## Task 2 — local AAA
 
@@ -137,17 +153,20 @@ object-group service OG-WEB-ICMP
  tcp eq 443
  icmp echo
 !
+no ip access-list extended ACL-EDGE-IN
 ip access-list extended ACL-EDGE-IN
- no 10
- no 20
- no 30
  permit object-group OG-WEB-ICMP object-group OG-CLIENTS object-group OG-SERVERS
  deny ip any any log
 ```
 
-(Resequence first if needed: `ip access-list resequence ACL-EDGE-IN 10 10`.) Re-run the pc1
-tests — identical behavior. Now "add a server subnet" = one line in `OG-SERVERS` instead of ACE
-surgery. `show object-group` + `show access-lists` to see the expansion.
+We delete and recreate the whole ACL rather than editing ACEs in place — a common trap: if you
+only removed the three permits (`no 10`/`no 20`/`no 30`) and appended the new permit, it would
+be added at sequence **50**, *behind* the surviving `deny ip any any log` at 40, and top-down
+first-match would blackhole the LAN. (The interface reference survives the delete/recreate; an
+ACL that is momentarily empty permits nothing you care about here, but on production gear you'd
+build the new ACL under a new name and swap `ip access-group` atomically.) Re-run the pc1
+tests — identical behavior to task 3. Now "add a server subnet" = one line in `OG-SERVERS`
+instead of ACE surgery. `show object-group` + `show access-lists` to see the expansion.
 
 ## Task 5 — uRPF: drop spoofed sources
 
@@ -160,16 +179,27 @@ interface Ethernet0/1
  ip verify unicast source reachable-via rx
 ```
 
+One order-of-operations subtlety first: on IOS/IOS-XE the **input ACL is evaluated before
+uRPF** (Cisco's uRPF configuration guide spells the order out). Your task-4 edge ACL would
+therefore eat the spoofed packets before uRPF ever sees them — and the uRPF counters we want to
+watch would stay at zero. Take the ACL off for this experiment:
+
+```
+r1(config)# interface Ethernet0/1
+r1(config-if)# no ip access-group ACL-EDGE-IN in
+```
+
 Now actually spoof from pc1 (multitool ships the tooling):
 
 ```bash
 docker exec -it clab-ccnp-lab09-pc1 bash
 ip addr add 172.99.99.99/32 dev eth1          # bogus source
-ping -c 3 -I 172.99.99.99 10.9.3.1            # spoofed pings
-ping -c 3 10.9.1.100 -I eth1 >/dev/null &     # (legit traffic still fine)
+ping -c 3 -I 172.99.99.99 10.9.3.1            # spoofed pings - dropped by uRPF
+ping -c 3 10.9.3.1                            # control: legit source still passes
 ```
 
-On r1 the spoofed packets die at uRPF (before the ACL even runs):
+On r1 the spoofed packets die at the uRPF check (no route back to 172.99.99.99 via e0/1), while
+the legitimately-sourced control ping sails through:
 
 ```
 r1# show ip interface Ethernet0/1 | include verify|suppressed
@@ -181,7 +211,9 @@ r1# show ip traffic | include RPF
 
 Strict (`rx`) vs loose (`any` — route exists via *any* interface, for multihomed/asymmetric
 edges) is the ENARSI distinction; strict belongs at single-homed edges exactly like this one.
-Clean up pc1: `ip addr del 172.99.99.99/32 dev eth1`.
+Clean up: `ip addr del 172.99.99.99/32 dev eth1` on pc1, and **re-apply the edge ACL** on r1
+(`ip access-group ACL-EDGE-IN in`) — in production the two coexist fine (ACL first, uRPF
+second); we removed it only so the drops would land on the uRPF counters you were studying.
 
 ## Task 6 — CoPP: protect the control plane
 
@@ -203,8 +235,16 @@ control-plane
  service-policy input PM-COPP
 ```
 
-Attack it from pc1: `ping -f -s 1200 10.9.12.2` (flood mode, ~fails fast). Watch the policer
-earn its keep:
+One prerequisite: pc1's flood must first *transit r1*, and your edge ACL only permits traffic
+to the server LAN — packets aimed at r2's own address would die at `deny ip any any log`. Open
+a surgical hole for the test (and note how the sequence number places it before the deny):
+
+```
+r1(config)# ip access-list extended ACL-EDGE-IN
+r1(config-ext-nacl)# 15 permit icmp 10.9.1.0 0.0.0.255 host 10.9.12.2 echo
+```
+
+Now attack from pc1: `ping -f -s 1200 10.9.12.2` (flood mode). Watch the policer earn its keep:
 
 ```
 r2# show policy-map control-plane
@@ -246,7 +286,7 @@ verified access vs perimeter trust; SASE = cloud-delivered SD-WAN + security sta
 <details><summary>Solution reference</summary>
 
 Final configs in [`solutions/`](solutions/) (tasks 1–6);
-`./deploy.sh deploy 9 --solved` boots the hardened end state.
+`./deploy.sh reset 9 && ./deploy.sh deploy 9 --solved` boots the hardened end state.
 </details>
 
 **Next:** [Lab 10 — Automation & programmability](../lab10-automation/README.md)

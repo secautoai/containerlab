@@ -54,6 +54,7 @@ def main() -> None:
     if args.delete:
         resp = requests.delete(url, headers=HEADERS, auth=auth, verify=False)
         print(f"DELETE {url}\n -> HTTP {resp.status_code}")
+        resp.raise_for_status()  # 404 = nothing to delete: fail loudly, exit non-zero
         return
 
     resp = requests.put(
@@ -64,6 +65,7 @@ def main() -> None:
     resp.raise_for_status()
 
     read_back = requests.get(url, headers=HEADERS, auth=auth, verify=False)
+    read_back.raise_for_status()  # surface the HTTP error, not a JSON decode error
     print(json.dumps(read_back.json(), indent=2))
 
 

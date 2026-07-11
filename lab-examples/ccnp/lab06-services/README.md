@@ -7,7 +7,7 @@ SNMP traps to a monitoring host — then *watch* the packets arrive.
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENCOR 3.4.c** (FHRP: HSRP/VRRP), **3.4.b** (NAT/PAT), **3.4.a** (NTP), **4.2** (syslog/SNMP), **ENARSI 4.2** (DHCP), 4.3/4.4 (SNMP/logging), 4.6 (NAT) |
+| Blueprint mapping | **ENCOR 3.4.c** (FHRP: HSRP/VRRP), **3.4.b** (NAT/PAT), **3.4.a** (NTP), **ENARSI 4.2** (SNMP), **4.3** (syslog/logging), **4.4** (DHCP) |
 | Nodes / RAM | 3× IOL + 1× IOL-L2 + 2 hosts / ~3 GB |
 | Estimated time | 2.5–3.5 h |
 
@@ -85,8 +85,9 @@ interface Ethernet0/1
 
 Test: `shutdown` r1 e0/2 → priority drops 110→90 (< r2's 100) → r2 preempts to Active
 (`show standby brief` on r2; `%HSRP-5-STATECHANGE` in the log). Start a continuous ping from
-pc1 to 198.51.100.53 during the failover — after NAT is up (task 3), repeat and count lost
-packets. `no shutdown` and watch r1 preempt back.
+pc1 to the **VIP** (`ping 10.1.10.1`) during the failover and count lost packets — the VIP is
+the only end-to-end target that exists yet; internet targets need NAT (task 3), after which you
+can repeat the experiment against 198.51.100.53. `no shutdown` and watch r1 preempt back.
 
 ## Task 3 — NAT/PAT to the internet
 
@@ -147,6 +148,9 @@ lease from pc2 (host shell):
 ```bash
 docker exec -it clab-ccnp-lab06-pc2 udhcpc -i eth1
 docker exec clab-ccnp-lab06-pc2 ip addr show eth1     # 10.1.10.12/24 (first free)
+# udhcpc installs its default route with a high metric, so the container's
+# docker-mgmt default on eth0 still wins - promote the DHCP gateway explicitly:
+docker exec clab-ccnp-lab06-pc2 ip route replace default via 10.1.10.1 dev eth1
 docker exec clab-ccnp-lab06-pc2 ping -c 3 198.51.100.53
 ```
 
@@ -223,20 +227,28 @@ talking points for the exam: v2c = community strings in cleartext (pair with ACL
 
 With everything running: continuous ping from pc2 (DHCP client!) to 198.51.100.53, then pull r1's
 LAN cable the brutal way — `shutdown` its e0/1. Observe, in order: HSRP failover to r2
-(`%HSRP-5-STATECHANGE` via syslog on pc1's capture), pings resuming through r2's PAT (new
-translations on r2 — old flows break: NAT state isn't replicated, a real design discussion),
-and the linkdown trap. Restore and `./deploy.sh save 6`.
+(`%HSRP-5-STATECHANGE` — r2's copy reaches pc1's syslog capture; r1's own messages can't, see
+below), and pings resuming through r2's PAT (new translations on r2 — old flows break: NAT
+state isn't replicated, a real design discussion). One thing you will **not** see: r1's
+linkDown trap. The collector (pc1) sits behind the very interface that just went down, so the
+trap follows r1's default to the ISP and dies — and SNMP *traps* are fire-and-forget UDP, never
+retransmitted (that's what *informs* are for). On `no shutdown`, the **linkUp** trap does land
+in your udp/162 capture. Restore and `./deploy.sh save 6`.
 
 ## Challenges
 
-1. Convert group 10 from HSRP to **VRRP** (`vrrp 10 ip 10.1.10.1` etc.). List the protocol
-   differences you can *see*: default timers, preemption default, virtual MAC
-   (`0000.5e00.01xx`), who owns the VIP if it equals a real interface address.
+1. Convert group 10 from HSRP to **VRRP**. IOS-XE only speaks VRRPv3 multi-address-family
+   style: `fhrp version vrrp v3` globally, then `vrrp 10 address-family ipv4` + `address
+   10.1.10.1 primary` on the interface. List the protocol differences you can *see*: default
+   timers, preemption default, virtual MAC (`0000.5e00.01xx`), who owns the VIP if it equals a
+   real interface address.
 2. Move the DHCP pool to **r3** and make it work with `ip helper-address` on r1/r2 — you'll
    have to solve the return-path problem the ISP has for 10.1.10.0/24 (that's the point).
-3. Balance the load: create a second HSRP group 20 with r2 active and hand half the clients a
-   VIP of 10.1.10.254 via a second DHCP pool — poor man's GLBP (and know why GLBP itself did
-   this automatically).
+3. Balance the load: create a second HSRP group 20 with r2 active and hand chosen clients a
+   VIP of 10.1.10.254 as their gateway — poor man's GLBP (and know why GLBP itself did this
+   automatically). Catch: IOS refuses a second pool with the same `network` statement, and pool
+   selection is per-subnet, not per-client — you'll need a **manual binding pool**
+   (`host` + `client-identifier` + its own `default-router`) for pc2.
 4. Configure **SNMPv3**: group with `priv`, user with SHA auth + AES 128, and re-capture — the
    trap payload is now encrypted vs the v2c one you saw.
 5. Make NAT survive gateway failover for *new* flows only, and explain precisely why *existing*
@@ -245,7 +257,7 @@ and the linkdown trap. Restore and `./deploy.sh save 6`.
 
 <details><summary>Solution reference</summary>
 
-Final configs in [`solutions/`](solutions/); deploy with `./deploy.sh deploy 6 --solved`
+Final configs in [`solutions/`](solutions/); deploy with `./deploy.sh reset 6 && ./deploy.sh deploy 6 --solved`
 (covers tasks 1–7).
 </details>
 

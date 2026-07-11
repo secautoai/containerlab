@@ -40,6 +40,7 @@ topology:
       kind: linux
       # no IP on purpose - pc2 gets its address via DHCP in task 4:
       #   docker exec clab-ccnp-lab06-pc2 udhcpc -i eth1
+      #   docker exec clab-ccnp-lab06-pc2 ip route replace default via 10.1.10.1 dev eth1
 
   links:
     - endpoints: ["pc1:eth1", "sw1:Ethernet0/1"]

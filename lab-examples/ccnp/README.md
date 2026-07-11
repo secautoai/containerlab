@@ -56,7 +56,7 @@ CCNA-level knowledge is assumed throughout these labs.
 | 1.0 | Architecture | 15% | Enterprise design (2/3-tier, fabric), high availability (FHRP), Catalyst SD-WAN, SD-Access, QoS concepts, switching mechanisms (CEF, FIB/RIB) |
 | 2.0 | Virtualization | 10% | Device virtualization (hypervisors, VMs, virtual switching), data-path virtualization: **VRF, GRE, IPsec**, LISP/VXLAN concepts |
 | 3.0 | Infrastructure | 30% | **Layer 2:** 802.1Q trunking, static/LACP EtherChannel, RSTP/MST + guards. **Layer 3:** OSPFv2/v3 (areas, network types, summarization, filtering), eBGP (peering, path selection). **IP services:** NTP, NAT/PAT, HSRP/VRRP, multicast concepts |
-| 4.0 | Network Assurance | 10% | debug/conditional debug, ping/traceroute, **SNMP, syslog, NetFlow/Flexible NetFlow**, SPAN/ERSPAN, **IP SLA**, Catalyst Center workflows, **NETCONF/RESTCONF** |
+| 4.0 | Network Assurance | 10% | debug/conditional debug, ping/traceroute, **NetFlow/Flexible NetFlow**, SPAN/ERSPAN, **IP SLA**, Catalyst Center workflows, **NETCONF/RESTCONF** |
 | 5.0 | Security | 20% | Device access control (lines, **AAA**), **ACLs, CoPP**, REST API security, **Zero Trust Architecture, SASE, MACsec/TrustSec** *(new in v1.2)*, 802.1X/MAB/WebAuth concepts |
 | 6.0 | Automation and Artificial Intelligence | 15% | Python fundamentals, **JSON**, **YANG models**, **NETCONF/RESTCONF APIs**, Catalyst Center & SD-WAN Manager APIs, **EEM**, orchestration tools, AI/ML for network operations *(new in v1.2)* |
 
@@ -67,7 +67,7 @@ CCNA-level knowledge is assumed throughout these labs.
 | 1.0 | Layer 3 Technologies | 35% | Administrative distance, route maps, loop prevention, **bidirectional redistribution with filtering/tagging**, summarization, **policy-based routing**, VRF-Lite, BFD, **EIGRP (classic & named mode, stubs, unequal-cost load balancing)**, **OSPF (network types, path preference, areas/LSAs)**, **BGP (iBGP/eBGP, path selection, attributes, route reflectors, policies)** |
 | 2.0 | VPN Technologies | 20% | **MPLS operations (LSR, LDP, labels, LSPs), MPLS L3VPN**, **DMVPN (mGRE, NHRP, IPsec, spoke-to-spoke)** |
 | 3.0 | Infrastructure Security | 20% | **IOS AAA** (local, TACACS+/RADIUS concepts), **IPv4 ACLs / IPv6 traffic filters, uRPF, CoPP**, IPv6 first-hop security concepts |
-| 4.0 | Infrastructure Services | 25% | Device management (SSH/SCP, console/VTY), **SNMP, syslog, debugs**, **DHCP (server/relay/options)**, **NetFlow v5/v9/Flexible**, **IP SLA + object tracking**, **NAT** |
+| 4.0 | Infrastructure Services | 25% | Device management (SSH/SCP, console/VTY), **SNMP, syslog, debugs**, **DHCP (server/relay/options)**, **NetFlow v5/v9/Flexible**, **IP SLA + object tracking** |
 
 ### What a virtual lab can and cannot cover
 
@@ -88,13 +88,13 @@ on earlier labs. "RAM" is the approximate memory used by the routers (768 MB per
 | --- | --- | --- | --- | --- | --- |
 | [00](lab00-foundation/README.md) | Containerlab foundation *(free images)* | containerlab workflow, IP addressing, static routing, FRR | tooling prerequisite | 2 FRR + 2 hosts | <0.5 GB |
 | [01](lab01-switching/README.md) | Enterprise switching | VLANs, 802.1Q, LACP EtherChannel, Rapid-PVST+, root manipulation, PortFast/BPDU Guard, inter-VLAN SVIs | ENCOR 3.1.a/b/c, 1.0 design | 3 IOL-L2 + 2 hosts | ~2.3 GB |
-| [02](lab02-ospf/README.md) | Multi-area OSPF | Areas, DR/BDR, network types, cost, passive-interface, totally stubby, NSSA, summarization, default origination, authentication | ENCOR 3.2.b · ENARSI 1.8 | 4 IOL | ~3 GB |
-| [03](lab03-eigrp/README.md) | EIGRP named mode | DUAL, successors/FS, wide metrics, variance (unequal-cost LB), summarization, stub, SHA authentication | ENARSI 1.5/1.6 · ENCOR 3.2.a | 4 IOL | ~3 GB |
-| [04](lab04-bgp/README.md) | BGP peering & policy | eBGP/iBGP, OSPF underlay, next-hop-self, route reflectors, weight/local-pref/AS-path/MED, aggregation | ENCOR 3.2.c · ENARSI 1.9–1.11 | 5 IOL | ~3.8 GB |
-| [05](lab05-redistribution/README.md) | Redistribution & path control | Two-point mutual redistribution, tags & loop prevention, distribute/prefix lists, PBR, IP SLA + tracking, floating statics | ENARSI 1.1–1.4 | 4 IOL | ~3 GB |
-| [06](lab06-services/README.md) | IP services (FHRP, NAT, DHCP) | HSRPv2 + tracking, VRRP, PAT/static NAT, DHCP server/relay, NTP, syslog, SNMP | ENCOR 3.4.a–c · ENARSI 4.1–4.4 | 3 IOL + 1 IOL-L2 + 2 hosts | ~3 GB |
-| [07](lab07-vpn/README.md) | GRE, DMVPN & IPsec | p2p GRE, mGRE+NHRP (DMVPN phase 1→3), EIGRP overlay, spoke-to-spoke tunnels, IPsec profiles | ENCOR 2.1.c · ENARSI 2.3/2.4 | 4 IOL | ~3 GB |
-| [08](lab08-mpls/README.md) | MPLS L3VPN | LDP, label switching, VRFs, RD/RT, MP-BGP VPNv4, PE-CE eBGP | ENARSI 2.1/2.2 · ENCOR 2.1.b | 5 IOL | ~3.8 GB |
+| [02](lab02-ospf/README.md) | Multi-area OSPF | Areas, DR/BDR, network types, cost, passive-interface, totally stubby, NSSA, summarization, default origination, authentication | ENCOR 3.2.b · ENARSI 1.10 | 4 IOL | ~3 GB |
+| [03](lab03-eigrp/README.md) | EIGRP named mode | DUAL, successors/FS, wide metrics, variance (unequal-cost LB), summarization, stub, SHA authentication | ENARSI 1.9 · ENCOR 3.2.a | 4 IOL | ~3 GB |
+| [04](lab04-bgp/README.md) | BGP peering & policy | eBGP/iBGP, OSPF underlay, next-hop-self, route reflectors, weight/local-pref/AS-path/MED, aggregation | ENCOR 3.2.c · ENARSI 1.11 | 5 IOL | ~3.8 GB |
+| [05](lab05-redistribution/README.md) | Redistribution & path control | Two-point mutual redistribution, tags & loop prevention, distribute/prefix lists, PBR, IP SLA + tracking, floating statics | ENARSI 1.1–1.6, 4.5 | 4 IOL | ~3 GB |
+| [06](lab06-services/README.md) | IP services (FHRP, NAT, DHCP) | HSRPv2 + tracking, VRRP, PAT/static NAT, DHCP server/relay, NTP, syslog, SNMP | ENCOR 3.4.a–c · ENARSI 4.2–4.4 | 3 IOL + 1 IOL-L2 + 2 hosts | ~3 GB |
+| [07](lab07-vpn/README.md) | GRE, DMVPN & IPsec | p2p GRE, mGRE+NHRP (DMVPN phase 1→3), EIGRP overlay, spoke-to-spoke tunnels, IPsec profiles | ENCOR 2.2.b · ENARSI 2.3 | 4 IOL | ~3 GB |
+| [08](lab08-mpls/README.md) | MPLS L3VPN | LDP, label switching, VRFs, RD/RT, MP-BGP VPNv4, PE-CE eBGP | ENARSI 2.1/2.2 · ENCOR 2.2.a | 5 IOL | ~3.8 GB |
 | [09](lab09-security/README.md) | Infrastructure security | Device hardening, local AAA, VTY ACLs, extended & object-group ACLs, uRPF, CoPP | ENCOR 5.1/5.2 · ENARSI 3.1–3.3 | 3 IOL + 1 host | ~2.3 GB |
 | [10](lab10-automation/README.md) | Automation & programmability | NETCONF + YANG, RESTCONF, JSON, Python (ncclient/requests), EEM applets | ENCOR 6.x, 4.x · ENARSI 4.x | 2 IOL | ~1.5 GB |
 

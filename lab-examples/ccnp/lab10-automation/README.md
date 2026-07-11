@@ -165,7 +165,9 @@ No CLI — three quick reps with the artifacts you just produced:
    into it and note that JSON objects/arrays map to Python dicts/lists — ENCOR asks this
    directly ("what Python type is X?").
 3. Skim the model tree: `show netconf-yang datastores` then
-   `curl -sk -u admin:admin https://clab-ccnp-lab10-r1/restconf/data/netconf-state/capabilities ...`
+   `curl -sk -u admin:admin -H "Accept: application/yang-data+json" https://clab-ccnp-lab10-r1/restconf/data/ietf-netconf-monitoring:netconf-state/capabilities`
+   (note the module-qualified first path element — RFC 8040 requires it, matching the URL
+   grammar from task 3)
    — every capability URI = one more model you could automate against.
 
 ## Challenges
@@ -189,7 +191,7 @@ No CLI — three quick reps with the artifacts you just produced:
 <details><summary>Solution reference</summary>
 
 Final configs in [`solutions/`](solutions/) (APIs on, Lo100 present, EEM applet);
-`./deploy.sh deploy 10 --solved` boots the end state. The scripts in `scripts/` are already
+`./deploy.sh reset 10 && ./deploy.sh deploy 10 --solved` boots the end state. The scripts in `scripts/` are already
 the reference implementation.
 </details>
 

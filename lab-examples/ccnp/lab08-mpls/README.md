@@ -7,7 +7,7 @@ operations" items are things you've *watched happen*.
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENARSI 2.1** (MPLS operations: LSR, LDP, label switching, LSPs), **2.2** (MPLS L3VPN), **1.3 VRF-Lite** (contrast), **ENCOR 2.1.a** (VRF) |
+| Blueprint mapping | **ENARSI 2.1** (MPLS operations: LSR, LDP, label switching, LSPs), **2.2** (MPLS L3VPN), **1.7 VRF-Lite** (contrast), **ENCOR 2.2.a** (VRF) |
 | Nodes / RAM | 5× IOL / ~3.8 GB |
 | Estimated time | 3–4 h |
 
@@ -190,8 +190,13 @@ show mpls ldp neighbor detail               ! session, address list
 show mpls forwarding-table detail           ! LFIB incl. label stacks
 show bgp vpnv4 unicast vrf CUST-A summary   ! PE-CE sessions
 show ip cef vrf CUST-A 172.16.20.0 detail   ! imposition: full stack resolution
-ping vrf CUST-A 192.168.20.2 source Ethernet0/1   ! PE-side VRF-aware tools
+ping vrf CUST-A 192.168.10.2                ! PE-side VRF-aware tools (local CE)
 ```
+
+Why ping the *local* CE and not the far PE-CE /30? Because the /30s were never **exported**
+into VPNv4 — only what BGP carries crosses the core, and the CEs advertise just their LANs.
+Try `ping vrf CUST-A 192.168.20.2` and watch it fail for exactly that reason (no route in
+pe1's VRF table, and ce2 would lack a return route anyway) — then see challenge 4.
 
 ## Challenges
 
@@ -204,15 +209,17 @@ ping vrf CUST-A 192.168.20.2 source Ethernet0/1   ! PE-side VRF-aware tools
 3. Convert the PE-CE protocol on site 2 to **OSPF** (`router ospf 10 vrf CUST-A` +
    `redistribute bgp`/`redistribute ospf` at pe2). What's a sham-link and when would you need
    one?
-4. Filter within the VPN: allow only 172.16.20.0/24 (not the /30) towards ce1 using a
-   prefix-list on pe1's VRF address family.
-5. Compare with **VRF-Lite** (ENARSI 1.3): explain what breaks if you delete LDP but keep the
+4. Export the PE-CE /30s by adding `redistribute connected` under `address-family ipv4 vrf
+   CUST-A` on **pe2** — verify ce1 now learns 192.168.20.0/30 (and task 7's failing ping now
+   works). Then filter within the VPN: allow only 172.16.20.0/24 (not the /30) towards ce1
+   using a prefix-list on pe1's VRF address family.
+5. Compare with **VRF-Lite** (ENARSI 1.7): explain what breaks if you delete LDP but keep the
    VRFs, and how VRF-Lite would have to carry CUST-A between pe1 and pe2 instead (per-VRF
    subinterfaces end-to-end) — why doesn't that scale?
 
 <details><summary>Solution reference</summary>
 
-Final configs in [`solutions/`](solutions/); deploy with `./deploy.sh deploy 8 --solved`.
+Final configs in [`solutions/`](solutions/); deploy with `./deploy.sh reset 8 && ./deploy.sh deploy 8 --solved`.
 </details>
 
 **Next:** [Lab 09 — Infrastructure security](../lab09-security/README.md)

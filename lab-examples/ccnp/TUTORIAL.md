@@ -82,7 +82,7 @@ download images from random sites** — apart from being illegal, they are a mal
 2. Clone vrnetlab (the containerlab-tuned fork) and drop the binaries in:
 
     ```bash
-    git clone https://github.com/hellt/vrnetlab && cd vrnetlab/cisco/iol
+    git clone https://github.com/srl-labs/vrnetlab && cd vrnetlab/cisco/iol
     cp /mnt/virl-base-images/iol-xe-*/x86_64_crb_linux-adventerprisek9-ms   cisco_iol-17.12.01.bin
     cp /mnt/virl-base-images/ioll2-xe-*/x86_64_crb_linux_l2-adventerprisek9-ms cisco_iol-L2-17.12.01.bin
     ```
@@ -140,8 +140,9 @@ Each lab follows the same loop:
    ENCOR/ENARSI test interpretation of their output heavily.
 4. **Save your work** — `./deploy.sh save labNN` (or `write memory` per node). Saved configs live
    in NVRAM inside the lab directory and survive destroy/deploy.
-5. **Stuck? Compare with the solution** — every node has a reference config in `solutions/`.
-   Diff yours against it, or redeploy the whole lab pre-solved:
+5. **Stuck? Compare with the solution** — every node in labs 01–10 has a reference config in
+   `solutions/` (lab00 is baseline-only). Diff yours against it, or redeploy the whole lab
+   pre-solved — the `reset` matters: startup configs only apply to a wiped lab:
 
     ```bash
     ./deploy.sh reset labNN               # wipe back to baseline
@@ -157,8 +158,9 @@ Each lab follows the same loop:
 
 - **SSH (preferred):** `ssh admin@clab-ccnp-lab02-r1` — password `admin`. containerlab adds every
   node to `/etc/hosts`, so node names always resolve. `./deploy.sh ssh 2 r1` does the same.
-- **Console via docker:** `docker exec -it clab-ccnp-lab02-r1 telnet 127.0.0.1 5000` gives you the
-  serial console (useful if you break SSH — e.g. in the security lab).
+- **Console via docker:** `docker attach clab-ccnp-lab02-r1` gives you the IOL console on the
+  container's stdio (useful if you break SSH — e.g. in the security lab). Detach with
+  `Ctrl-P Ctrl-Q` — **not** Ctrl-C, which would kill the container.
 - **Interface naming:** `Ethernet0/0` is management (in VRF `clab-mgmt` — leave it alone).
   Data ports are `Ethernet0/1`–`Ethernet0/3`, then `Ethernet1/0`–`Ethernet1/3`, etc. The lab
   READMEs and topology files always tell you which port connects where.
@@ -181,10 +183,10 @@ Each lab follows the same loop:
 | `deploy.sh check` says image missing | Build/tag the IOL images (§3) or export `CCNP_IOL_IMAGE`/`CCNP_IOL_L2_IMAGE` |
 | Node stuck in `booting` / restart loop | Almost always RAM exhaustion — free memory or run one lab at a time; check `docker logs clab-<lab>-<node>` |
 | `exec format error` in node logs | You are on an ARM host — IOL requires x86_64 |
-| SSH refused right after deploy | IOL takes 30–60 s to boot; `watch docker ps` until healthy, then retry |
+| SSH refused right after deploy | IOL takes 30–60 s to boot (no docker healthcheck — the container shows plain `Up`); wait a minute and retry |
 | Can't reach node names (`clab-...`) | Deploy adds them to `/etc/hosts`; use the mgmt IPs from `./deploy.sh status <lab>` otherwise |
 | Lab behaves "already configured" after redeploy | NVRAM persisted your last session — `./deploy.sh reset <lab>` for a clean baseline |
-| Need to see boot/console output | `docker exec -it <container> telnet 127.0.0.1 5000` |
+| Need to see boot/console output | `docker attach <container>` (detach with `Ctrl-P Ctrl-Q`) or `docker logs <container>` |
 | Weird L2 behavior on IOL-L2 | Check you built the node with the **L2** image (`type: L2` nodes); the L3 image has no `switchport` |
 
 Happy labbing! Continue with [Lab 00](lab00-foundation/README.md), then follow the

@@ -11,6 +11,7 @@ reads it back so you can see the round trip. Verify on the router afterwards:
 """
 
 import argparse
+from xml.sax.saxutils import escape
 
 from ncclient import manager
 
@@ -43,8 +44,9 @@ def main() -> None:
         hostkey_verify=False,
         device_params={"name": "iosxe"},
     ) as m:
+        # escape() keeps user input from breaking (or injecting into) the XML
         payload = EDIT_TEMPLATE.format(
-            name=args.interface, description=args.description
+            name=escape(args.interface), description=escape(args.description)
         )
         reply = m.edit_config(target="running", config=payload)
         print(f"edit-config rpc-reply ok={reply.ok}")
@@ -55,8 +57,8 @@ def main() -> None:
             filter=(
                 "subtree",
                 '<interfaces xmlns="urn:ietf:params:xml:ns:yang:'
-                f'ietf-interfaces"><interface><name>{args.interface}</name>'
-                "</interface></interfaces>",
+                f"ietf-interfaces\"><interface><name>{escape(args.interface)}"
+                "</name></interface></interfaces>",
             ),
         )
         print(confirm.data_xml)

@@ -49,7 +49,9 @@ def dump_interfaces(host: str, user: str, password: str) -> None:
         for iface in root.iterfind(".//if:interface", NS):
             name = iface.findtext("if:name", default="?", namespaces=NS)
             enabled = iface.findtext("if:enabled", default="?", namespaces=NS)
-            addr = iface.find(".//ip:address/ip:ip", NS)
+            # anchor to the ipv4 container: ietf-ip's ipv6 addresses share the
+            # same namespace and a bare .//ip:address would match those too
+            addr = iface.find("ip:ipv4/ip:address/ip:ip", NS)
             ipv4 = addr.text if addr is not None else "-"
             print(f"  {name:<16} enabled={enabled:<5} ipv4={ipv4}")
 
@@ -67,13 +69,14 @@ def main() -> int:
     args = ap.parse_args()
 
     hosts = args.host or ["clab-ccnp-lab10-r1", "clab-ccnp-lab10-r2"]
+    failed = 0
     for host in hosts:
         try:
             dump_interfaces(host, args.user, args.password)
         except Exception as exc:  # noqa: BLE001 - lab script, show the raw cause
             print(f"!! {host}: {exc}", file=sys.stderr)
-            return 1
-    return 0
+            failed += 1  # keep going - the other routers may still answer
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

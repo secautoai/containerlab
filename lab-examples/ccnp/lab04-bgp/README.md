@@ -7,7 +7,7 @@ prepending, MED — and advertise a clean aggregate to the world.
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENCOR 3.2.c** (eBGP: peering, path selection), **ENARSI 1.9–1.11** (iBGP/eBGP neighbors, path selection & attributes, route reflectors, policies) |
+| Blueprint mapping | **ENCOR 3.2.c** (eBGP: peering, path selection), **ENARSI 1.11** (iBGP/eBGP neighbors, path selection & attributes, route reflectors, policies) |
 | Nodes / RAM | 5× IOL / ~3.8 GB |
 | Estimated time | 3–4 h |
 
@@ -106,9 +106,10 @@ router bgp 65001
  neighbor 10.255.255.3 next-hop-self
 ```
 
-Re-check r1: next hop is now 10.255.255.2 — resolvable, route installs, `ping 100.100.100.1`
-works (ISPs null-route the prefix but the *path* is what we're testing — ping 198.51.100.1 and
-203.0.113.1 instead for real replies).
+Re-check r1: next hop is now 10.255.255.2 — resolvable, and the route installs in the RIB
+(`show ip route 100.100.100.0`). Don't expect `ping 100.100.100.1` to get replies — the ISPs
+null-route that test prefix, so it answers with timeouts/unreachables by design; ping
+198.51.100.1 and 203.0.113.1 for real end-to-end replies.
 
 ## Task 3 — break the mesh, fix with a route reflector
 
@@ -143,17 +144,22 @@ Both ISPs advertise `100.100.100.0/24`, so AS 65001 has a real choice. On r1:
 r1# show ip bgp 100.100.100.0
 Paths: (2 available, best #2, table default)
   65200
-    10.255.255.3 ... from 10.255.255.1 (10.255.255.3)
+    10.255.255.3 ... from 10.255.255.3 (10.255.255.3)
   65100
-    10.255.255.2 ... from 10.255.255.1 (10.255.255.2)
+    10.255.255.2 ... from 10.255.255.2 (10.255.255.2)
       ... best
 ```
 
-With every attribute tied (weight 0, LP 100, AS-path length 1, origin IGP, no MED comparison —
-different neighbor AS), selection falls through to... which tiebreaker? Read the `best` line and
-match it against the order — memorize it as: **W**e **L**ove **O**ranges **AS** **O**ranges
-**M**ean **P**ure **R**efreshment: Weight → Local pref → Originated locally → AS-path → Origin →
-MED → Paths external over internal → RID/oldest.
+(`from A (B)`: A = the neighbor the update came from, B = that neighbor's router-ID — on a
+reflected route B becomes the **Originator ID** instead; you'll see that on r2/r3.) With every
+attribute tied (weight 0, LP 100, AS-path length 1, origin IGP, no MED comparison — different
+neighbor AS, both paths internal, equal IGP metric to both next hops), selection falls all the
+way through to the **lowest router-ID**. Memorize the full order — including the two steps
+people forget:
+
+> Weight → Local pref → Locally originated → AS-path → Origin → MED → eBGP over iBGP →
+> **lowest IGP metric to the next hop** → oldest (eBGP only) → **lowest RID** → shortest
+> cluster list → lowest neighbor address.
 
 Now steer it deliberately, three ways:
 
@@ -240,8 +246,13 @@ isn't — a standard exam distinction.
    applying, verify, revert.
 2. Write a route-map on r2 that sets LP 200 **only** for `203.0.113.0/24` (prefix-list match)
    and LP 100 for the rest — deliberate per-prefix traffic engineering.
-3. Kill the r2–r4 link (`shutdown`). Measure how long AS 65001 takes to fail over to ISP-B, then
-   tune it: `neighbor ... timers 10 30`, and discuss what BFD would do better (ENARSI 1.4).
+3. Kill the r2–r4 link (`shutdown`) and measure the failover to ISP-B — it's near-instant.
+   Why? (`bgp fast-external-fallover`, on by default for directly connected eBGP, tears the
+   session on link-down.) Now disable it (`no bgp fast-external-fallover` on r2), repeat, and
+   watch the hold timer (180 s) govern instead; only then do `neighbor ... timers 10 30` — and
+   BFD (ENARSI 1.8) — have something to improve. Which real-world failures does
+   fast-external-fallover *not* catch? (Anything that keeps the interface up: a switch in the
+   path, unidirectional loss.)
 4. Configure `maximum-prefix 10 warning-only` from ISP-A on r2, then think through what happens
    at 10 prefixes *without* warning-only — why do providers make you ask before raising it?
 5. Add a static default on r2/r3 towards the ISPs plus `default-information originate` in OSPF —
@@ -253,7 +264,7 @@ isn't — a standard exam distinction.
 <details><summary>Solution reference</summary>
 
 Final configs in [`solutions/`](solutions/) (RR topology, LP 200 on r2, prepend on r3,
-aggregate + outbound filter on both edges); deploy with `./deploy.sh deploy 4 --solved`.
+aggregate + outbound filter on both edges); deploy with `./deploy.sh reset 4 && ./deploy.sh deploy 4 --solved`.
 </details>
 
 **Next:** [Lab 05 — Redistribution & path control](../lab05-redistribution/README.md)

@@ -7,6 +7,12 @@
 #                                                  also the trusted mgmt subnet)
 name: ccnp-lab09
 
+# pinned so the ACL-MGMT entries in the tutorial/solutions (172.20.20.0/24)
+# always match the management network, whatever the host's clab default is
+mgmt:
+  network: clab
+  ipv4-subnet: 172.20.20.0/24
+
 topology:
   kinds:
     cisco_iol:

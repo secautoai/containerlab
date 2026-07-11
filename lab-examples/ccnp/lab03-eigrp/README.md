@@ -7,7 +7,7 @@ and SHA authentication.
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENARSI 1.5/1.6** (EIGRP classic vs named, neighbors, DUAL/stuck-in-active, equal & unequal cost load balancing, metrics, stubs, summarization, authentication), **ENCOR 3.2.a** (EIGRP vs OSPF comparison) |
+| Blueprint mapping | **ENARSI 1.9** (EIGRP classic vs named, neighbors, DUAL/stuck-in-active, equal & unequal cost load balancing, metrics, stubs, summarization, authentication), **ENCOR 3.2.a** (EIGRP vs OSPF comparison) |
 | Nodes / RAM | 4× IOL / ~3 GB |
 | Estimated time | 2.5–3.5 h |
 
@@ -142,7 +142,9 @@ Routing entry for 172.16.4.0/24
       Route metric is 111411200, traffic share count is 18
 ```
 
-Traffic is shared **proportionally to metric** (18:17 here), not 50/50. Rules to memorize:
+Traffic is shared **inversely proportionally to metric** — the *better* path carries the
+*larger* share (18 on the r2 path vs 17 on the slower r3 path; note 870400×18 = 921600×17), not
+50/50. Rules to memorize:
 variance only admits paths that (a) meet the feasibility condition and (b) have metric <
 variance × FD. It can never use a non-FS path.
 
@@ -209,9 +211,11 @@ r1# show ip eigrp neighbors detail
 
 Two consequences to verify:
 
-1. `show ip eigrp topology 172.16.4.0/24` on r1 — the **via r3 entry is gone** (a stub doesn't
-   advertise routes it *learned*), so your variance path silently disappeared. Design lesson:
-   stub belongs on true spokes, never on transit routers.
+1. `show ip eigrp topology 172.16.4.0/22` on r1 (the **/22** — task 4's summary suppressed the
+   /24s domain-wide, so that's the prefix r1 actually holds) — the **via r3 entry is gone** (a
+   stub doesn't advertise routes it *learned*, and r3 only ever learned the /22 from r4), so
+   your variance path silently disappeared. Design lesson: stub belongs on true spokes, never
+   on transit routers.
 2. `Suppressing queries` — r1 won't query r3 during DUAL computation, which is the whole point:
    stubs bound the query domain and prevent SIA in hub-and-spoke networks.
 

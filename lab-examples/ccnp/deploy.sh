@@ -6,10 +6,10 @@
 #   ./deploy.sh deploy <lab> [opts]   deploy a lab (opts: --solved --reconfigure)
 #   ./deploy.sh destroy <lab>|all     destroy a lab, keep saved configs (NVRAM)
 #   ./deploy.sh reset <lab>           destroy AND wipe saved state -> back to baseline
-#   ./deploy.sh redeploy <lab>        destroy (keep state) + deploy
+#   ./deploy.sh redeploy <lab> [opts] destroy (keep state) + deploy
 #   ./deploy.sh status [lab]          containerlab inspect for one lab / all labs
-#   ./deploy.sh save <lab>            save running-config -> startup on every node
-#   ./deploy.sh ssh <lab> <node>      ssh into a node (admin/admin for IOL)
+#   ./deploy.sh save <lab>            save running-config -> startup on every IOS node
+#   ./deploy.sh ssh <lab> <node>      ssh into an IOS node (admin/admin)
 #   ./deploy.sh graph <lab>           serve the topology graph on :50080
 #
 # <lab> may be given as: lab02 | 02 | 2 | lab02-ospf
@@ -27,7 +27,6 @@ cd "$SCRIPT_DIR"
 # defaults must match the ${CCNP_...:=...} defaults inside the .clab.yml files
 CCNP_IOL_IMAGE="${CCNP_IOL_IMAGE:-vrnetlab/cisco_iol:17.12.01}"
 CCNP_IOL_L2_IMAGE="${CCNP_IOL_L2_IMAGE:-vrnetlab/cisco_iol:L2-17.12.01}"
-FREE_IMAGES=("quay.io/frrouting/frr:10.5.1" "wbitt/network-multitool:3.22.2")
 
 RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'; BLUE=$'\033[0;34m'; NC=$'\033[0m'
 info()  { echo "${BLUE}[info]${NC} $*"; }
@@ -36,12 +35,13 @@ warn()  { echo "${YELLOW}[warn]${NC} $*"; }
 fail()  { echo "${RED}[fail]${NC} $*" >&2; }
 die()   { fail "$*"; exit 1; }
 
-# run containerlab (root required) preserving the CCNP_* environment
+# run containerlab (root required) preserving the CCNP_* environment.
+# ${arr[@]+...} guards empty-array expansion for bash < 4.4 under set -u.
 CLAB_BIN="${CLAB_BIN:-containerlab}"
 clab() {
     local sudo_cmd=()
     if [ "$(id -u)" -ne 0 ]; then sudo_cmd=(sudo -E); fi
-    "${sudo_cmd[@]}" env \
+    ${sudo_cmd[@]+"${sudo_cmd[@]}"} env \
         "CCNP_IOL_IMAGE=$CCNP_IOL_IMAGE" \
         "CCNP_IOL_L2_IMAGE=$CCNP_IOL_L2_IMAGE" \
         "CCNP_CFG=${CCNP_CFG:-configs}" \
@@ -52,16 +52,18 @@ clab() {
 lab_dirs() { find . -maxdepth 1 -type d -name 'lab[0-9][0-9]-*' | sort | sed 's|^\./||'; }
 
 resolve_lab() {  # accepts lab02 | 02 | 2 | lab02-ospf -> echoes directory name
-    local arg="${1:-}" num
+    local arg="${1:-}" num matches
     [ -n "$arg" ] || die "missing <lab> argument (try: $0 list)"
     [ -d "$arg" ] && { echo "${arg%/}"; return; }
     num="${arg#lab}"
     [[ "$num" =~ ^[0-9]+$ ]] || die "unknown lab '$arg' (try: $0 list)"
     num="$(printf '%02d' "$((10#$num))")"
-    local match
-    match="$(lab_dirs | grep -E "^lab${num}-" || true)"
-    [ -n "$match" ] || die "no lab directory matches 'lab${num}-*'"
-    echo "$match"
+    matches="$(lab_dirs | grep -E "^lab${num}-" || true)"
+    [ -n "$matches" ] || die "no lab directory matches 'lab${num}-*'"
+    if [ "$(wc -l <<<"$matches")" -gt 1 ]; then
+        die "lab number '$arg' is ambiguous: $(tr '\n' ' ' <<<"$matches")- use the full directory name"
+    fi
+    echo "$matches"
 }
 
 topo_file() {  # lab dir -> topology file path
@@ -73,11 +75,23 @@ topo_file() {  # lab dir -> topology file path
 
 lab_name() { sed -n 's/^name:[[:space:]]*//p' "$(topo_file "$1")" | head -n1; }
 
-deployed() {  # true if the lab has running containers
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^clab-$(lab_name "$1")-" || return 1
+running_containers() {  # buffered docker ps snapshot (avoids grep -q SIGPIPE under pipefail)
+    docker ps --format '{{.Names}}' 2>/dev/null || true
 }
 
-uses_image() { grep -q "$1" "$(topo_file "$2")"; }
+deployed() {  # deployed <labdir> [snapshot] -> true if the lab has running containers
+    local snapshot="${2:-$(running_containers)}"
+    grep -q "^clab-$(lab_name "$1")-" <<<"$snapshot"
+}
+
+is_ios_lab() { grep -q 'kind: cisco_iol' "$(topo_file "$1")"; }
+
+topo_images() {  # every image a lab's topology can resolve to (env defaults expanded)
+    sed -n 's/.*image:[[:space:]]*//p' "$(topo_file "$1")" \
+        | sed -e "s|\${CCNP_IOL_IMAGE:=[^}]*}|$CCNP_IOL_IMAGE|" \
+              -e "s|\${CCNP_IOL_L2_IMAGE:=[^}]*}|$CCNP_IOL_L2_IMAGE|" \
+        | sort -u
+}
 
 # ---------------------------------------------------------------- commands
 cmd_check() {
@@ -94,19 +108,15 @@ cmd_check() {
     fi
     [ "$(uname -m)" = "x86_64" ] && ok "architecture: x86_64" || { fail "architecture $(uname -m): Cisco IOL requires x86_64"; rc=1; }
 
-    local img
-    for img in "${FREE_IMAGES[@]}"; do
+    # check every image any lab topology resolves to (derived, not hardcoded)
+    local d img
+    for img in $(for d in $(lab_dirs); do topo_images "$d"; done | sort -u); do
         if docker image inspect "$img" >/dev/null 2>&1; then
             ok "image present: $img"
+        elif [[ "$img" == vrnetlab/* ]]; then
+            warn "image missing: $img  -> labs using it will not deploy (TUTORIAL.md section 3)"
         else
             warn "image not local (pulled automatically on deploy): $img"
-        fi
-    done
-    for img in "$CCNP_IOL_IMAGE" "$CCNP_IOL_L2_IMAGE"; do
-        if docker image inspect "$img" >/dev/null 2>&1; then
-            ok "image present: $img"
-        else
-            warn "image missing: $img  -> labs using it will not deploy (TUTORIAL.md section 3)"
         fi
     done
     return $rc
@@ -114,19 +124,23 @@ cmd_check() {
 
 cmd_list() {
     printf '%-24s %-10s %s\n' "LAB" "STATE" "TITLE"
-    local d state title
+    local d state title snapshot
+    snapshot="$(running_containers)"
     for d in $(lab_dirs); do
-        state="-"
-        deployed "$d" && state="${GREEN}running${NC}" || state="stopped"
-        title="$(sed -n 's/^# //p' "$d/README.md" 2>/dev/null | head -n1)"
-        printf '%-24s %-10b %s\n' "$d" "$state" "$title"
+        if deployed "$d" "$snapshot"; then
+            state="${GREEN}$(printf '%-10s' running)${NC}"
+        else
+            state="$(printf '%-10s' stopped)"
+        fi
+        title="$(sed -n 's/^# //p' "$d/README.md" 2>/dev/null | head -n1 || true)"
+        printf '%-24s %b %s\n' "$d" "$state" "$title"
     done
     echo
     echo "hint: '$0 deploy <lab>' then open <lab>/README.md and follow the tutorial"
 }
 
 cmd_deploy() {
-    local dir; dir="$(resolve_lab "$1")"; shift
+    local dir; dir="$(resolve_lab "${1:-}")"; shift || true
     local extra=()
     export CCNP_CFG="${CCNP_CFG:-configs}"
     while [ $# -gt 0 ]; do
@@ -137,26 +151,34 @@ cmd_deploy() {
         esac
         shift
     done
-    # refuse to deploy an IOL lab when the image is missing - clearer than clab's error
-    if uses_image '\${CCNP_IOL_IMAGE' "$dir" && ! docker image inspect "$CCNP_IOL_IMAGE" >/dev/null 2>&1; then
-        die "$dir needs $CCNP_IOL_IMAGE - build it first (TUTORIAL.md section 3)"
+    if [ "$CCNP_CFG" = "solutions" ] && [ ! -d "$dir/solutions" ]; then
+        die "$dir has no solutions/ directory (lab00 is baseline-only) - deploy without --solved"
     fi
-    if uses_image '\${CCNP_IOL_L2_IMAGE' "$dir" && ! docker image inspect "$CCNP_IOL_L2_IMAGE" >/dev/null 2>&1; then
-        die "$dir needs $CCNP_IOL_L2_IMAGE - build it first (TUTORIAL.md section 3)"
-    fi
+    # refuse to deploy when a required image is missing - clearer than clab's error
+    local img
+    for img in $(topo_images "$dir"); do
+        if [[ "$img" == vrnetlab/* ]] && ! docker image inspect "$img" >/dev/null 2>&1; then
+            die "$dir needs $img - build it first (TUTORIAL.md section 3)"
+        fi
+    done
     [ "$CCNP_CFG" = "solutions" ] && warn "deploying with SOLUTION configs (--solved)"
     info "deploying $dir ..."
-    clab deploy -t "$(topo_file "$dir")" "${extra[@]}"
+    clab deploy -t "$(topo_file "$dir")" ${extra[@]+"${extra[@]}"}
     echo
     ok "deployed. Next: open $dir/README.md and start the tasks."
-    echo "     ssh: $0 ssh ${dir%%-*} <node>   (IOL credentials: admin/admin)"
+    if is_ios_lab "$dir"; then
+        echo "     ssh: $0 ssh ${dir%%-*} <node>   (IOS credentials: admin/admin)"
+    else
+        echo "     shell: docker exec -it clab-$(lab_name "$dir")-<node> bash   (vtysh on the routers)"
+    fi
 }
 
 cmd_destroy() {
     if [ "${1:-}" = "all" ]; then
-        local d
+        local d snapshot
+        snapshot="$(running_containers)"
         for d in $(lab_dirs); do
-            deployed "$d" && { info "destroying $d"; clab destroy -t "$(topo_file "$d")"; }
+            deployed "$d" "$snapshot" && { info "destroying $d"; clab destroy -t "$(topo_file "$d")"; }
         done
         ok "all labs destroyed (saved configs kept)"
         return
@@ -173,9 +195,9 @@ cmd_reset() {
 }
 
 cmd_redeploy() {
-    local dir; dir="$(resolve_lab "${1:-}")"
+    local dir; dir="$(resolve_lab "${1:-}")"; shift || true
     deployed "$dir" && clab destroy -t "$(topo_file "$dir")"
-    cmd_deploy "$dir"
+    cmd_deploy "$dir" "$@"
 }
 
 cmd_status() {
@@ -189,13 +211,17 @@ cmd_status() {
 cmd_save() {
     local dir; dir="$(resolve_lab "${1:-}")"
     deployed "$dir" || die "$dir is not running"
+    if ! is_ios_lab "$dir"; then
+        die "$dir has no IOS nodes - 'clab save' cannot save FRR/linux nodes; use 'write' inside vtysh (writes the bind-mounted frr.conf)"
+    fi
     clab save -t "$(topo_file "$dir")"
-    ok "running-config saved to startup on all $dir nodes"
+    ok "running-config saved to startup on all $dir IOS nodes"
 }
 
 cmd_ssh() {
     local dir node; dir="$(resolve_lab "${1:-}")"
     node="${2:-}"; [ -n "$node" ] || die "usage: $0 ssh <lab> <node>   e.g. $0 ssh 2 r1"
+    is_ios_lab "$dir" || die "$dir has no SSH-enabled IOS nodes - use: docker exec -it clab-$(lab_name "$dir")-$node bash"
     exec ssh "admin@clab-$(lab_name "$dir")-$node"
 }
 
@@ -205,7 +231,29 @@ cmd_graph() {
     clab graph -t "$(topo_file "$dir")"
 }
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() {
+    cat <<'EOF'
+deploy.sh - one entry point for the CCNP containerlab study labs.
+
+  ./deploy.sh check                 verify prerequisites and images
+  ./deploy.sh list                  list labs and their deployment state
+  ./deploy.sh deploy <lab> [opts]   deploy a lab (opts: --solved --reconfigure)
+  ./deploy.sh destroy <lab>|all     destroy a lab, keep saved configs (NVRAM)
+  ./deploy.sh reset <lab>           destroy AND wipe saved state -> back to baseline
+  ./deploy.sh redeploy <lab> [opts] destroy (keep state) + deploy
+  ./deploy.sh status [lab]          containerlab inspect for one lab / all labs
+  ./deploy.sh save <lab>            save running-config -> startup on every IOS node
+  ./deploy.sh ssh <lab> <node>      ssh into an IOS node (admin/admin)
+  ./deploy.sh graph <lab>           serve the topology graph on :50080
+
+<lab> may be given as: lab02 | 02 | 2 | lab02-ospf
+
+Environment overrides (also see README.md):
+  CCNP_IOL_IMAGE      L3 router image  (default vrnetlab/cisco_iol:17.12.01)
+  CCNP_IOL_L2_IMAGE   L2 switch image  (default vrnetlab/cisco_iol:L2-17.12.01)
+  CCNP_CFG            configs | solutions (set automatically by --solved)
+EOF
+}
 
 case "${1:-}" in
     check)    shift; cmd_check "$@" ;;

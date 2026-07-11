@@ -22,12 +22,12 @@ outputs and challenge tasks:
 | --- | --- | --- |
 | lab00 | containerlab foundation (free images: FRR + Linux) | tooling |
 | lab01 | VLANs, 802.1Q, LACP EtherChannel, Rapid-PVST+ | ENCOR 3.1 |
-| lab02 | multi-area OSPF, stub/NSSA, summarization, auth | ENCOR 3.2 / ENARSI 1.8 |
-| lab03 | EIGRP named mode, DUAL, variance, stub | ENARSI 1.5/1.6 |
-| lab04 | eBGP/iBGP, route reflectors, path attributes | ENCOR 3.2 / ENARSI 1.9+ |
+| lab02 | multi-area OSPF, stub/NSSA, summarization, auth | ENCOR 3.2 / ENARSI 1.10 |
+| lab03 | EIGRP named mode, DUAL, variance, stub | ENARSI 1.9 |
+| lab04 | eBGP/iBGP, route reflectors, path attributes | ENCOR 3.2 / ENARSI 1.11 |
 | lab05 | two-point redistribution, tags, PBR, IP SLA | ENARSI 1.1–1.4 |
 | lab06 | HSRP, NAT/PAT, DHCP, NTP, syslog, SNMP | ENCOR 3.4 / ENARSI 4.x |
-| lab07 | GRE, DMVPN phase 1→3, IPsec | ENCOR 2.1 / ENARSI 2.3 |
+| lab07 | GRE, DMVPN phase 1→3, IPsec | ENCOR 2.2 / ENARSI 2.3 |
 | lab08 | MPLS L3VPN: LDP, VRF, MP-BGP VPNv4 | ENARSI 2.1/2.2 |
 | lab09 | hardening, AAA, ACLs, uRPF, CoPP | ENCOR 5.x / ENARSI 3.x |
 | lab10 | NETCONF/YANG, RESTCONF, Python, EEM | ENCOR 6.x |

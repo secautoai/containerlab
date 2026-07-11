@@ -7,7 +7,7 @@ IPsec. You'll capture packets on the "internet" router and watch GRE turn into E
 
 | | |
 | --- | --- |
-| Blueprint mapping | **ENCOR 2.1.c** (GRE/IPsec data-path virtualization), **ENARSI 2.3** (DMVPN: GRE/mGRE, NHRP, IPsec, dynamic neighbors, spoke-to-spoke), 2.4 (IPsec concepts) |
+| Blueprint mapping | **ENCOR 2.2.b** (GRE/IPsec data-path virtualization), **ENARSI 2.3** (DMVPN: GRE/mGRE, NHRP, IPsec — 2.3.c, dynamic neighbors, spoke-to-spoke) |
 | Nodes / RAM | 4× IOL / ~3 GB |
 | Estimated time | 3–4 h |
 
@@ -67,7 +67,9 @@ sudo ip netns exec clab-ccnp-lab07-r4 tcpdump -nni eth1 proto gre
 ```
 
 Outer header 100.64.x (routable), inner 10.0.x (private) — data-path virtualization in one line
-of tcpdump. Know the numbers: GRE = IP protocol **47**, adds **24 bytes** (20 IP + 4 GRE), hence
+of tcpdump. Know the numbers: GRE = IP protocol **47**, adds **24 bytes** (20 IP + 4 GRE) — or
+**28** when a `tunnel key` is configured (the key is a 4-byte optional GRE field, and every
+DMVPN tunnel in this lab carries one) — hence
 the classic `ip mtu 1400` + `ip tcp adjust-mss 1360` you'll set on the DMVPN tunnels.
 
 Also know the failure mode: if the tunnel *destination* ever becomes reachable **through the
@@ -105,6 +107,7 @@ registration:
 interface Tunnel100
  bandwidth 10000
  ip address 172.16.100.2 255.255.255.0
+ no ip redirects
  ip mtu 1400
  ip tcp adjust-mss 1360
  ip nhrp authentication CCNP7
@@ -118,8 +121,10 @@ interface Tunnel100
 ```
 
 Decode each piece (exam!): `map` = static NBMA↔overlay entry for the hub; `map multicast` = who
-gets routing-protocol multicasts; `nhs` = register with this next-hop server; `network-id` and
-`tunnel key` must match domain-wide. Verify on r1:
+gets routing-protocol multicasts; `nhs` = register with this next-hop server. What must match
+domain-wide: the `tunnel key` and `ip nhrp authentication`. The `network-id` does **not** — it
+is locally significant (never carried in NHRP packets; it just groups interfaces into an NHRP
+domain on that router), a classic trick question. Verify on r1:
 
 ```
 r1# show dmvpn
@@ -244,7 +249,7 @@ Protocol 50 (ESP), payload unreadable — mission accomplished.
 <details><summary>Solution reference</summary>
 
 Final configs (phase 3 + IPsec) in [`solutions/`](solutions/);
-`./deploy.sh deploy 7 --solved` boots the end state.
+`./deploy.sh reset 7 && ./deploy.sh deploy 7 --solved` boots the end state.
 </details>
 
 **Next:** [Lab 08 — MPLS L3VPN](../lab08-mpls/README.md)
