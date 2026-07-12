@@ -1,0 +1,14 @@
+# Two nodes joined by one veth wire. Containers are --network=none: the wire
+# minilab builds is the only dataplane. n2 serves TCP :9000 so n1 can probe it.
+name: pair
+topology:
+  nodes:
+    n1:
+      image: minilab/nodeagent:v1
+    n2:
+      image: minilab/nodeagent:v1
+      exec:
+        - /nodeagent -serve :9000
+  links:
+    - endpoints: ["n1:eth1", "n2:eth1"]
+      ipv4: ["10.10.0.1/24", "10.10.0.2/24"]
